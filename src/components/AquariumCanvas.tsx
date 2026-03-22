@@ -119,7 +119,7 @@ function resetFish(fish: FishSchool, w: number, h: number) {
     fish.paletteId[i] = (Math.random() * nPalettes) | 0;
 
     const sizeT = Math.random();
-    fish.size[i] = 0.5 + sizeT * sizeT * 0.95;
+    fish.size[i] = 0.72 + sizeT * 0.78;
     const baseSpeed = 14 + Math.random() * 62;
     const depthSpeedMul =
       fish.depth[i] === FISH_DEPTH_BACK
@@ -406,11 +406,16 @@ function stepBubbles(
 function drawDriftParticles(
   ctx: CanvasRenderingContext2D,
   buf: FloatBuffers,
+  ambience: AquariumAmbience,
 ) {
   ctx.save();
+  const fill =
+    ambience === "day"
+      ? "rgba(210, 240, 255, 0.9)"
+      : "rgba(140, 230, 220, 0.85)";
   for (let i = 0; i < buf.pCount; i++) {
-    ctx.globalAlpha = buf.pop[i];
-    ctx.fillStyle = "rgba(210, 240, 255, 0.9)";
+    ctx.globalAlpha = ambience === "night" ? buf.pop[i] * 1.15 : buf.pop[i];
+    ctx.fillStyle = fill;
     ctx.beginPath();
     ctx.arc(buf.px[i], buf.py[i], buf.pr[i], 0, Math.PI * 2);
     ctx.fill();
@@ -547,11 +552,82 @@ function drawPointerBubbles(
 
 export type AquariumAmbience = "day" | "night";
 
+/** Soft god-rays from the surface — low contrast, few beams. */
+function drawDayLightRays(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  timeSec: number,
+) {
+  ctx.save();
+  const cx = width * 0.5;
+  const rayCount = 5;
+  for (let i = 0; i < rayCount; i++) {
+    const t = (i + 0.5) / rayCount - 0.5;
+    const originX = cx + t * width * 0.72;
+    const angle = t * 0.11;
+    const beamNarrow = width * (0.028 + (i % 2) * 0.014);
+    const breath = 0.88 + 0.12 * Math.sin(timeSec * 0.35 + i * 0.9);
+
+    ctx.save();
+    ctx.translate(originX, 0);
+    ctx.rotate(angle);
+
+    const grd = ctx.createLinearGradient(0, 0, 0, height * 0.92);
+    grd.addColorStop(0, `rgba(255, 252, 245, ${0.11 * breath})`);
+    grd.addColorStop(0.4, `rgba(220, 240, 255, ${0.045 * breath})`);
+    grd.addColorStop(1, "rgba(200, 230, 255, 0)");
+
+    ctx.beginPath();
+    ctx.moveTo(-beamNarrow * 0.5, 0);
+    ctx.lineTo(beamNarrow * 0.5, 0);
+    ctx.lineTo(beamNarrow * 1.65, height * 0.88);
+    ctx.lineTo(-beamNarrow * 1.65, height * 0.88);
+    ctx.closePath();
+    ctx.fillStyle = grd;
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/** Deep-water cyan/teal glow pools with a slow pulse — sparse, not sparkly. */
+function drawNightBiolumGlow(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  timeSec: number,
+) {
+  ctx.save();
+  const m = Math.min(width, height);
+  const spots: readonly { ux: number; uy: number; r: number; phase: number }[] =
+    [
+      { ux: 0.2, uy: 0.58, r: 0.32, phase: 0 },
+      { ux: 0.82, uy: 0.52, r: 0.26, phase: 1.15 },
+      { ux: 0.5, uy: 0.68, r: 0.36, phase: 2.05 },
+    ];
+
+  for (const s of spots) {
+    const pulse = 0.55 + 0.45 * Math.sin(timeSec * 0.42 + s.phase);
+    const gx = width * s.ux;
+    const gy = height * s.uy;
+    const rad = m * s.r;
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, rad);
+    g.addColorStop(0, `rgba(110, 235, 215, ${0.075 * pulse})`);
+    g.addColorStop(0.38, `rgba(50, 120, 160, ${0.032 * pulse})`);
+    g.addColorStop(1, "rgba(15, 40, 70, 0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, width, height);
+  }
+  ctx.restore();
+}
+
 function drawUnderwaterBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   ambience: AquariumAmbience,
+  timeSec: number,
 ) {
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
   if (ambience === "day") {
@@ -560,10 +636,10 @@ function drawUnderwaterBackground(
     gradient.addColorStop(0.68, "#3a8a9c");
     gradient.addColorStop(1, "#124850");
   } else {
-    gradient.addColorStop(0, "#1a3540");
-    gradient.addColorStop(0.38, "#0f2830");
-    gradient.addColorStop(0.72, "#061820");
-    gradient.addColorStop(1, "#020a0c");
+    gradient.addColorStop(0, "#0c1828");
+    gradient.addColorStop(0.34, "#081420");
+    gradient.addColorStop(0.68, "#050c18");
+    gradient.addColorStop(1, "#02060e");
   }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
@@ -580,11 +656,31 @@ function drawUnderwaterBackground(
     glow.addColorStop(0, "rgba(255, 255, 255, 0.22)");
     glow.addColorStop(1, "rgba(255, 255, 255, 0)");
   } else {
-    glow.addColorStop(0, "rgba(140, 190, 220, 0.08)");
+    glow.addColorStop(0, "rgba(130, 175, 215, 0.1)");
+    glow.addColorStop(0.55, "rgba(40, 90, 130, 0.04)");
     glow.addColorStop(1, "rgba(255, 255, 255, 0)");
   }
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
+
+  if (ambience === "day") {
+    drawDayLightRays(ctx, width, height, timeSec);
+  } else {
+    const surfaceCool = ctx.createRadialGradient(
+      width * 0.5,
+      0,
+      0,
+      width * 0.5,
+      height * 0.12,
+      width * 0.48,
+    );
+    surfaceCool.addColorStop(0, "rgba(160, 200, 230, 0.055)");
+    surfaceCool.addColorStop(1, "rgba(30, 60, 90, 0)");
+    ctx.fillStyle = surfaceCool;
+    ctx.fillRect(0, 0, width, height);
+
+    drawNightBiolumGlow(ctx, width, height, timeSec);
+  }
 }
 
 function drawDistantReef(
@@ -891,9 +987,9 @@ export default function AquariumCanvas({
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
-      drawUnderwaterBackground(ctx, cssW, cssH, ambienceRef.current);
+      drawUnderwaterBackground(ctx, cssW, cssH, ambienceRef.current, timeSec);
       drawDistantReef(ctx, cssW, cssH);
-      drawDriftParticles(ctx, buf);
+      drawDriftParticles(ctx, buf, ambienceRef.current);
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK);
       drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_MID);
