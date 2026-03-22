@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useLayoutEffect, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useLayoutEffect,
+  type MutableRefObject,
+} from "react";
 
 /** Latest pointer position in canvas CSS pixels (same space as drawing after DPR scale). */
 export type PointerCanvasState = {
@@ -854,6 +859,63 @@ function drawForegroundSeaweed(
   ctx.fill();
 }
 
+function drawAquariumPoetry(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  ambience: AquariumAmbience,
+  fontFamily: string,
+) {
+  const cx = w * 0.5;
+  const title = "Virtual Fishtank";
+  const taglines = [
+    "A soothing, interactive aquarium",
+    "with calm motion, gentle taps,",
+    "and a quiet home on palm or desk.",
+  ];
+
+  const titleSize = Math.max(26, Math.min(56, w * 0.09));
+  const lineSize = Math.max(15, Math.min(26, w * 0.042));
+  const lineHeight = lineSize * 1.42;
+  const blockHalfHeight =
+    (titleSize * 1.1 + taglines.length * lineHeight) * 0.5;
+  const cy = h * 0.24;
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const night = ambience === "night";
+  const titleFill = night
+    ? "rgba(255, 250, 245, 0.54)"
+    : "rgba(28, 55, 72, 0.5)";
+  const lineFill = night
+    ? "rgba(220, 240, 255, 0.44)"
+    : "rgba(32, 72, 88, 0.46)";
+  const glow = night
+    ? "rgba(160, 220, 255, 0.32)"
+    : "rgba(255, 255, 255, 0.5)";
+
+  let y = cy - blockHalfHeight + titleSize * 0.45;
+
+  ctx.font = `600 ${titleSize}px ${fontFamily}`;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = night ? 28 : 18;
+  ctx.fillStyle = titleFill;
+  ctx.fillText(title, cx, y);
+
+  y += titleSize * 1.05;
+  ctx.shadowBlur = night ? 14 : 10;
+  ctx.font = `400 ${lineSize}px ${fontFamily}`;
+  ctx.fillStyle = lineFill;
+  for (const line of taglines) {
+    ctx.fillText(line, cx, y);
+    y += lineHeight;
+  }
+
+  ctx.restore();
+}
+
 type AquariumCanvasProps = {
   /** Optional ref to read the latest pointer position in canvas coordinates (no re-renders). */
   pointerCanvasRef?: MutableRefObject<PointerCanvasState>;
@@ -861,6 +923,8 @@ type AquariumCanvasProps = {
   ambience?: AquariumAmbience;
   /** School size; values outside DEFAULT…MAX are clamped. */
   fishCount?: number;
+  /** CSS `font-family` value (e.g. from `next/font`) for centered poetry drawn under the fish. */
+  poemFontFamily?: string;
 };
 
 function clampFishCount(n: number) {
@@ -874,6 +938,7 @@ export default function AquariumCanvas({
   pointerCanvasRef: pointerCanvasRefProp,
   ambience = "night",
   fishCount = DEFAULT_FISH_COUNT,
+  poemFontFamily,
 }: AquariumCanvasProps = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -892,6 +957,32 @@ export default function AquariumCanvas({
   useLayoutEffect(() => {
     fishCountRef.current = clampFishCount(fishCount);
   }, [fishCount]);
+
+  const poemFontFamilyRef = useRef(poemFontFamily);
+  useLayoutEffect(() => {
+    poemFontFamilyRef.current = poemFontFamily;
+  }, [poemFontFamily]);
+
+  const poemFontReadyRef = useRef(!poemFontFamily);
+  useEffect(() => {
+    if (!poemFontFamily) {
+      poemFontReadyRef.current = true;
+      return;
+    }
+    poemFontReadyRef.current = false;
+    let cancelled = false;
+    void document.fonts
+      .load(`600 72px ${poemFontFamily}`)
+      .then(() => {
+        if (!cancelled) poemFontReadyRef.current = true;
+      })
+      .catch(() => {
+        if (!cancelled) poemFontReadyRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [poemFontFamily]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1026,6 +1117,10 @@ export default function AquariumCanvas({
       drawUnderwaterBackground(ctx, cssW, cssH, ambienceRef.current, timeSec);
       drawDistantReef(ctx, cssW, cssH);
       drawDriftParticles(ctx, buf, ambienceRef.current);
+      const fam = poemFontFamilyRef.current;
+      if (fam && poemFontReadyRef.current) {
+        drawAquariumPoetry(ctx, cssW, cssH, ambienceRef.current, fam);
+      }
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK, n);
       drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_MID, n);
