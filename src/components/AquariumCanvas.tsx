@@ -51,6 +51,9 @@ type FishSchool = {
   dir: Float32Array;
   size: Float32Array;
   bobPhase: Float32Array;
+  /** Smoothed pointer reaction — added to base swim each step (CSS px/s). */
+  vxOff: Float32Array;
+  vyOff: Float32Array;
   /** Which compositing pass this fish belongs to (layered depth). */
   depth: Uint8Array;
   color: readonly string[];
@@ -73,6 +76,8 @@ function createFishSchool(): FishSchool {
     dir: new Float32Array(FISH_COUNT),
     size: new Float32Array(FISH_COUNT),
     bobPhase: new Float32Array(FISH_COUNT),
+    vxOff: new Float32Array(FISH_COUNT),
+    vyOff: new Float32Array(FISH_COUNT),
     depth: new Uint8Array(FISH_COUNT),
     color: FISH_COLORS,
   };
@@ -97,14 +102,74 @@ function resetFish(fish: FishSchool, w: number, h: number) {
     fish.dir[i] = Math.random() < 0.5 ? -1 : 1;
     fish.size[i] = 0.75 + Math.random() * 0.65;
     fish.bobPhase[i] = Math.random() * Math.PI * 2;
+    fish.vxOff[i] = 0;
+    fish.vyOff[i] = 0;
     fish.depth[i] = depths[i]!;
   }
 }
 
-function stepFish(fish: FishSchool, w: number, dt: number) {
+/** Nearby fish gently bias toward or away from the pointer; offsets are low-pass filtered (no snapping). */
+function stepFish(
+  fish: FishSchool,
+  w: number,
+  h: number,
+  dt: number,
+  pointer: PointerCanvasState,
+) {
   const margin = 40;
+  const top = h * 0.14;
+  const bottom = h * 0.86;
+  const influenceR = Math.min(320, Math.min(w, h) * 0.52);
+  const personal = 56;
+  const maxSteer = 58;
+  const follow = 1;
+  const flee = 1.35;
+  const depthReact: readonly number[] = [0.88, 1.12, 1.38];
+
   for (let i = 0; i < FISH_COUNT; i++) {
-    fish.x[i] += fish.speed[i] * fish.dir[i] * dt;
+    let targetVx = 0;
+    let targetVy = 0;
+
+    if (pointer.inCanvas && influenceR > 1) {
+      let dx = pointer.x - fish.x[i];
+      const dy = pointer.y - fish.y[i];
+      if (dx > w * 0.5) dx -= w;
+      else if (dx < -w * 0.5) dx += w;
+
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.75 && dist < influenceR) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const edge = 1 - dist / influenceR;
+        // Softer than edge² so mid-range fish still steer clearly toward the pointer.
+        const falloff = Math.pow(edge, 1.2);
+        const dFac = depthReact[fish.depth[i]!] ?? 1;
+        let along: number;
+        if (dist < personal) {
+          const t = 1 - dist / personal;
+          along = -flee * (t * t);
+        } else {
+          along = follow * (1 - (dist - personal) / (influenceR - personal));
+        }
+        const mag = Math.min(maxSteer, 52 * falloff * along * dFac);
+        targetVx = nx * mag;
+        targetVy = ny * mag;
+      }
+    }
+
+    const followRate = Math.min(1, 8 * dt);
+    fish.vxOff[i] += (targetVx - fish.vxOff[i]) * followRate;
+    fish.vyOff[i] += (targetVy - fish.vyOff[i]) * followRate;
+
+    const decay = pointer.inCanvas ? 1 : Math.max(0, 1 - 2.4 * dt);
+    fish.vxOff[i] *= decay;
+    fish.vyOff[i] *= decay;
+
+    const vx = fish.speed[i] * fish.dir[i] + fish.vxOff[i];
+    fish.x[i] += vx * dt;
+    fish.y[i] += fish.vyOff[i] * dt;
+    fish.y[i] = Math.min(bottom, Math.max(top, fish.y[i]));
+
     if (fish.x[i] < -margin) fish.x[i] += w + margin * 2;
     else if (fish.x[i] > w + margin) fish.x[i] -= w + margin * 2;
   }
@@ -734,7 +799,7 @@ export default function AquariumCanvas({ pointerCanvasRef: pointerCanvasRefProp 
       stepParticles(buf, cssW, cssH, dt);
       stepBubbles(buf, cssW, cssH, dt, timeSec);
       stepPointerBubbles(pointerBubbles, cssW, dt, timeSec);
-      stepFish(fish, cssW, dt);
+      stepFish(fish, cssW, cssH, dt, pointerCanvasRef.current);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
