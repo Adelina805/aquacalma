@@ -58,17 +58,25 @@ type FishSchool = {
   speedBoost: Float32Array;
   /** Which compositing pass this fish belongs to (layered depth). */
   depth: Uint8Array;
-  color: readonly string[];
+  /** Index into `FISH_PALETTES` — dorsal / mid / belly / fin for each fish. */
+  paletteId: Uint8Array;
 };
 
-const FISH_COLORS: readonly string[] = [
-  "#e85d4c",
-  "#f4a23a",
-  "#6ec9e0",
-  "#c89cff",
-  "#ffd966",
-  "#7ed957",
-];
+/** Tropical reef-inspired gradients (dorsal → mid → belly + tail accent). */
+const FISH_PALETTES = [
+  { dorsal: "#d4a010", mid: "#f0c238", belly: "#fff4c8", fin: "#a67a08" },
+  { dorsal: "#1a5588", mid: "#2a9adb", belly: "#9bd8f2", fin: "#103a5c" },
+  { dorsal: "#c84818", mid: "#e86c28", belly: "#fde0b8", fin: "#8a3010" },
+  { dorsal: "#218a78", mid: "#3ec9b0", belly: "#d2f5ee", fin: "#145c50" },
+  { dorsal: "#5c34a0", mid: "#7c58d8", belly: "#ddd0f5", fin: "#3c2068" },
+  { dorsal: "#b83020", mid: "#e05038", belly: "#ffd0a0", fin: "#781810" },
+  { dorsal: "#267848", mid: "#42b868", belly: "#c8f0d0", fin: "#165030" },
+  { dorsal: "#b84878", mid: "#e07098", belly: "#ffd8e8", fin: "#803050" },
+  { dorsal: "#167888", mid: "#2ab8d0", belly: "#b8eef8", fin: "#0e5060" },
+  { dorsal: "#a86828", mid: "#d09040", belly: "#ffeec8", fin: "#704018" },
+] as const;
+
+type FishPalette = (typeof FISH_PALETTES)[number];
 
 function createFishSchool(): FishSchool {
   return {
@@ -82,7 +90,7 @@ function createFishSchool(): FishSchool {
     vyOff: new Float32Array(FISH_COUNT),
     speedBoost: new Float32Array(FISH_COUNT),
     depth: new Uint8Array(FISH_COUNT),
-    color: FISH_COLORS,
+    paletteId: new Uint8Array(FISH_COUNT),
   };
 }
 
@@ -98,17 +106,28 @@ function resetFish(fish: FishSchool, w: number, h: number) {
     FISH_DEPTH_FRONT,
     FISH_DEPTH_FRONT,
   ];
+  const nPalettes = FISH_PALETTES.length;
   for (let i = 0; i < FISH_COUNT; i++) {
     fish.x[i] = Math.random() * w;
     fish.y[i] = top + Math.random() * (bottom - top);
-    fish.speed[i] = 26 + Math.random() * 48;
     fish.dir[i] = Math.random() < 0.5 ? -1 : 1;
-    fish.size[i] = 0.75 + Math.random() * 0.65;
     fish.bobPhase[i] = Math.random() * Math.PI * 2;
     fish.vxOff[i] = 0;
     fish.vyOff[i] = 0;
     fish.speedBoost[i] = 0;
     fish.depth[i] = depths[i]!;
+    fish.paletteId[i] = (Math.random() * nPalettes) | 0;
+
+    const sizeT = Math.random();
+    fish.size[i] = 0.5 + sizeT * sizeT * 0.95;
+    const baseSpeed = 14 + Math.random() * 62;
+    const depthSpeedMul =
+      fish.depth[i] === FISH_DEPTH_BACK
+        ? 0.78 + Math.random() * 0.12
+        : fish.depth[i] === FISH_DEPTH_FRONT
+          ? 1.02 + Math.random() * 0.14
+          : 0.9 + Math.random() * 0.14;
+    fish.speed[i] = baseSpeed * depthSpeedMul;
   }
 }
 
@@ -213,7 +232,7 @@ function drawFish(
   y: number,
   size: number,
   dir: number,
-  color: string,
+  palette: FishPalette,
   depth: number,
 ) {
   const depthScale =
@@ -228,11 +247,16 @@ function drawFish(
   const L = 22 * size;
   const H = 10 * size;
 
-  ctx.fillStyle = color;
+  const bodyGrad = ctx.createLinearGradient(0, -H * 0.55, 0, H * 0.55);
+  bodyGrad.addColorStop(0, palette.dorsal);
+  bodyGrad.addColorStop(0.42, palette.mid);
+  bodyGrad.addColorStop(1, palette.belly);
+  ctx.fillStyle = bodyGrad;
   ctx.beginPath();
   ctx.ellipse(-L * 0.12, 0, L * 0.44, H * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  ctx.fillStyle = palette.fin;
   ctx.beginPath();
   ctx.moveTo(-L * 0.52, 0);
   ctx.lineTo(-L * 0.98, -H * 0.5);
@@ -240,15 +264,21 @@ function drawFish(
   ctx.closePath();
   ctx.fill();
 
-  const ex = L * 0.24;
-  const ey = -H * 0.14;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+  // Lateral eye: sits inside the head ellipse (not past the snout).
+  const ex = L * 0.17;
+  const ey = H * 0.06;
+  const eyeR = H * 0.17;
+  ctx.fillStyle = "rgba(252, 252, 250, 0.94)";
   ctx.beginPath();
-  ctx.arc(ex, ey, H * 0.2, 0, Math.PI * 2);
+  ctx.ellipse(ex, ey, eyeR * 1.02, eyeR, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#142428";
+  ctx.fillStyle = "#1a2e32";
   ctx.beginPath();
-  ctx.arc(ex + H * 0.05, ey, H * 0.09, 0, Math.PI * 2);
+  ctx.arc(ex + H * 0.055, ey, H * 0.078, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.beginPath();
+  ctx.arc(ex + H * 0.04, ey - H * 0.03, H * 0.028, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
@@ -273,13 +303,14 @@ function drawFishSchool(
       Math.sin(timeSec * bobHz + fish.bobPhase[i]) *
       (5 + fish.size[i] * 9) *
       bobAmp;
+    const pal = FISH_PALETTES[fish.paletteId[i]!] ?? FISH_PALETTES[0]!;
     drawFish(
       ctx,
       fish.x[i],
       fish.y[i] + bob,
       fish.size[i],
       fish.dir[i],
-      fish.color[i]!,
+      pal,
       fish.depth[i]!,
     );
   }
