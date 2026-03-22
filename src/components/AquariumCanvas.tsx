@@ -1,6 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
+
+/** Latest pointer position in canvas CSS pixels (same space as drawing after DPR scale). */
+export type PointerCanvasState = {
+  x: number;
+  y: number;
+  /** True while the pointer is inside the canvas element (mouse hover or active touch). */
+  inCanvas: boolean;
+};
+
+function updatePointerCanvasState(
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+  out: PointerCanvasState,
+) {
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, canvas.clientWidth);
+  const h = Math.max(1, canvas.clientHeight);
+  const rw = Math.max(1e-6, rect.width);
+  const rh = Math.max(1e-6, rect.height);
+
+  out.x = ((clientX - rect.left) / rw) * w;
+  out.y = ((clientY - rect.top) / rh) * h;
+  out.inCanvas =
+    clientX >= rect.left &&
+    clientX < rect.right &&
+    clientY >= rect.top &&
+    clientY < rect.bottom;
+}
 
 /** Hard caps keep phones cool; count scales down with smaller canvases. */
 const MAX_PARTICLES = 56;
@@ -473,9 +502,20 @@ function drawForegroundSeaweed(
   ctx.fill();
 }
 
-export default function AquariumCanvas() {
+type AquariumCanvasProps = {
+  /** Optional ref to read the latest pointer position in canvas coordinates (no re-renders). */
+  pointerCanvasRef?: MutableRefObject<PointerCanvasState>;
+};
+
+export default function AquariumCanvas({ pointerCanvasRef: pointerCanvasRefProp }: AquariumCanvasProps = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pointerCanvasRefInternal = useRef<PointerCanvasState>({
+    x: 0,
+    y: 0,
+    inCanvas: false,
+  });
+  const pointerCanvasRef = pointerCanvasRefProp ?? pointerCanvasRefInternal;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -490,6 +530,31 @@ export default function AquariumCanvas() {
     let lastCssW = -1;
     let lastCssH = -1;
     let lastNow = 0;
+
+    const onPointerClient = (clientX: number, clientY: number) => {
+      updatePointerCanvasState(canvas, clientX, clientY, pointerCanvasRef.current);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      onPointerClient(e.clientX, e.clientY);
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      onPointerClient(e.clientX, e.clientY);
+    };
+
+    const onPointerLeave = () => {
+      pointerCanvasRef.current.inCanvas = false;
+    };
+
+    const onPointerCancel = () => {
+      pointerCanvasRef.current.inCanvas = false;
+    };
+
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("pointercancel", onPointerCancel);
 
     const tick = (now: number) => {
       const timeSec = now * 0.001;
@@ -534,14 +599,18 @@ export default function AquariumCanvas() {
 
     return () => {
       cancelAnimationFrame(rafId);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, []);
+  }, [pointerCanvasRef]);
 
   return (
     <div ref={containerRef} className="h-full w-full min-h-0">
       <canvas
         ref={canvasRef}
-        className="block h-full w-full"
+        className="pointer-events-auto block h-full w-full touch-none"
         aria-label="Aquarium view"
       />
     </div>
