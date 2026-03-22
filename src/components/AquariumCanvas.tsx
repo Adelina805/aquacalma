@@ -54,6 +54,8 @@ type FishSchool = {
   /** Smoothed pointer reaction — added to base swim each step (CSS px/s). */
   vxOff: Float32Array;
   vyOff: Float32Array;
+  /** Extra swim multiplier headroom; effective horizontal speed uses `speed * (1 + speedBoost)`. */
+  speedBoost: Float32Array;
   /** Which compositing pass this fish belongs to (layered depth). */
   depth: Uint8Array;
   color: readonly string[];
@@ -78,6 +80,7 @@ function createFishSchool(): FishSchool {
     bobPhase: new Float32Array(FISH_COUNT),
     vxOff: new Float32Array(FISH_COUNT),
     vyOff: new Float32Array(FISH_COUNT),
+    speedBoost: new Float32Array(FISH_COUNT),
     depth: new Uint8Array(FISH_COUNT),
     color: FISH_COLORS,
   };
@@ -104,6 +107,7 @@ function resetFish(fish: FishSchool, w: number, h: number) {
     fish.bobPhase[i] = Math.random() * Math.PI * 2;
     fish.vxOff[i] = 0;
     fish.vyOff[i] = 0;
+    fish.speedBoost[i] = 0;
     fish.depth[i] = depths[i]!;
   }
 }
@@ -125,6 +129,10 @@ function stepFish(
   const follow = 1;
   const flee = 1.35;
   const depthReact: readonly number[] = [0.88, 1.12, 1.38];
+  const maxSpeedBoost = 0.52;
+  const boostOnFlip = 0.36;
+  const pointerBoostPerSec = 2.4;
+  const boostDecayPerSec = 2.15;
 
   for (let i = 0; i < FISH_COUNT; i++) {
     let targetVx = 0;
@@ -138,6 +146,21 @@ function stepFish(
 
       const dist = Math.hypot(dx, dy);
       if (dist > 0.75 && dist < influenceR) {
+        // In the close zone, flee pushes opposite the base swim when the pointer is *ahead*
+        // of the fish (same side as the mouth), so horizontal speed cancels and the fish
+        // looks frozen. Turn around once so swimming matches fleeing.
+        if (dist < personal) {
+          const pointerAhead = fish.dir[i]! * dx > 2;
+          if (pointerAhead) {
+            fish.dir[i]! *= -1;
+            fish.vxOff[i] = 0;
+            fish.speedBoost[i] = Math.min(
+              maxSpeedBoost,
+              fish.speedBoost[i] + boostOnFlip,
+            );
+          }
+        }
+
         const nx = dx / dist;
         const ny = dy / dist;
         const edge = 1 - dist / influenceR;
@@ -154,6 +177,10 @@ function stepFish(
         const mag = Math.min(maxSteer, 52 * falloff * along * dFac);
         targetVx = nx * mag;
         targetVy = ny * mag;
+        fish.speedBoost[i] = Math.min(
+          maxSpeedBoost,
+          fish.speedBoost[i] + pointerBoostPerSec * dt,
+        );
       }
     }
 
@@ -165,7 +192,12 @@ function stepFish(
     fish.vxOff[i] *= decay;
     fish.vyOff[i] *= decay;
 
-    const vx = fish.speed[i] * fish.dir[i] + fish.vxOff[i];
+    fish.speedBoost[i] = Math.max(
+      0,
+      fish.speedBoost[i] - boostDecayPerSec * dt,
+    );
+    const swimMul = 1 + fish.speedBoost[i];
+    const vx = fish.speed[i] * swimMul * fish.dir[i] + fish.vxOff[i];
     fish.x[i] += vx * dt;
     fish.y[i] += fish.vyOff[i] * dt;
     fish.y[i] = Math.min(bottom, Math.max(top, fish.y[i]));
