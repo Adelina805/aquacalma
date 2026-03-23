@@ -15,7 +15,17 @@ const poemFont = Dancing_Script({
 });
 
 export default function HomeAquariumExperience() {
-  const [isNight, setIsNight] = useState(true);
+  const [isNight, setIsNight] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored =
+      window.localStorage.getItem("vf-ambience") ??
+      window.localStorage.getItem("theme");
+
+    if (stored === "day" || stored === "light") return false;
+    if (stored === "night" || stored === "dark") return true;
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
   const [sceneVisible, setSceneVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -26,6 +36,13 @@ export default function HomeAquariumExperience() {
   });
   runtimeSettingsRef.current.ambience = isNight ? "night" : "day";
   runtimeSettingsRef.current.fishCount = fishCount;
+
+  useEffect(() => {
+    const value = isNight ? "night" : "day";
+    window.localStorage.setItem("vf-ambience", value);
+    // Keep compatibility with common theme keys used by other UI parts.
+    window.localStorage.setItem("theme", isNight ? "dark" : "light");
+  }, [isNight]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setSceneVisible(true));
@@ -50,7 +67,7 @@ export default function HomeAquariumExperience() {
       </h1>
 
       <div
-        className={`absolute inset-0 z-0 min-h-0 transition-opacity duration-[1400ms] ease-out ${
+        className={`absolute inset-0 z-0 min-h-0 transition-opacity duration-1400 ease-out ${
           sceneVisible ? "opacity-100" : "opacity-0"
         }`}
       >
