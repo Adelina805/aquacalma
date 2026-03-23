@@ -75,6 +75,8 @@ export const MAX_FISH_COUNT = 100;
 const FISH_DEPTH_BACK = 0;
 const FISH_DEPTH_MID = 1;
 const FISH_DEPTH_FRONT = 2;
+/** Keep first paint lighter; full scene appears quickly after mount. */
+const STARTUP_PHASE_IN_MS = 800;
 
 /** Simple fish: horizontal drift; vertical bob applied when drawing. */
 type FishSchool = {
@@ -707,8 +709,10 @@ function ensureAquariumPaintCache(
   const cached = sim.paint;
   if (
     cached &&
-    cached.cssW === w &&
-    cached.cssH === h &&
+    // Allow tiny 1px-level rounding jitter during initial layout/resizes without
+    // constantly rebuilding gradients (which is one of the more expensive canvas ops).
+    Math.abs(cached.cssW - w) <= 1 &&
+    Math.abs(cached.cssH - h) <= 1 &&
     cached.ambience === ambience
   ) {
     return cached;
@@ -1145,6 +1149,11 @@ type AquariumCanvasSimulation = {
   paint: AquariumPaintCache | null;
 };
 
+// In React dev, Strict Mode intentionally mounts/unmounts components to surface unsafe lifecycles.
+// For this canvas, that can cause a noticeable "cold start" twice. Reusing a module-level simulation
+// keeps typed-array allocations and paint warmup from happening back-to-back.
+let sharedSimulation: AquariumCanvasSimulation | null = null;
+
 function createAquariumSimulation(): AquariumCanvasSimulation {
   return {
     buf: createBuffers(),
@@ -1230,12 +1239,37 @@ function AquariumCanvasComponent({
 
     let sim = simulationRef.current;
     if (!sim) {
-      sim = createAquariumSimulation();
+      sim = sharedSimulation ?? createAquariumSimulation();
+      sharedSimulation = sim;
       simulationRef.current = sim;
     }
+    // The DOM <canvas> backing store is per-instance. Reusing the shared simulation across
+    // Strict Mode remounts means we must force a backing-store resize on every mount.
+    sim.lastBackingW = -1;
+    sim.lastBackingH = -1;
+    sim.lastNow = 0;
+    sim.paint = null;
 
     const { buf, fish, pointerBubbles, pointerSpawn } = sim;
+    const effectStartMs = performance.now();
     let rafId = 0;
+
+    // Temporary instrumentation: helps confirm whether the first-seconds lag correlates
+    // with canvas size churn triggering particle/fish resets and paint cache rebuilds.
+    const debug = {
+      startMs: performance.now(),
+      logged: false,
+      lastObservedCssW: -1,
+      lastObservedCssH: -1,
+      cssRoundingChanges: 0,
+      backingResizes: 0,
+      paintCacheInvalidations: 0,
+      particleResets: 0,
+      fishResets: 0,
+    };
+    (window as any).__aquariumCanvasDebug = debug;
+    // eslint-disable-next-line no-console
+    console.log("[AquariumCanvas debug] effect mounted");
 
     const trySpawnPointerTrail = () => {
       const p = pointerCanvasRef.current;
@@ -1322,21 +1356,44 @@ function AquariumCanvasComponent({
       const n = clampFishCount(rs.fishCount);
       const ambienceNow = rs.ambience;
 
-      if (backingW !== sim.lastBackingW || backingH !== sim.lastBackingH) {
+      // Count when the rounded CSS size changes (even if it doesn't trigger a reset).
+      if (cssW !== debug.lastObservedCssW || cssH !== debug.lastObservedCssH) {
+        debug.cssRoundingChanges++;
+        debug.lastObservedCssW = cssW;
+        debug.lastObservedCssH = cssH;
+      }
+
+      const backingWDelta = Math.abs(backingW - sim.lastBackingW);
+      const backingHDelta = Math.abs(backingH - sim.lastBackingH);
+      const shouldUpdateBacking =
+        sim.lastBackingW < 0 || sim.lastBackingH < 0
+          ? true
+          : backingWDelta >= 4 || backingHDelta >= 4;
+      if (shouldUpdateBacking) {
         canvas.width = backingW;
         canvas.height = backingH;
         sim.lastBackingW = backingW;
         sim.lastBackingH = backingH;
         sim.paint = null;
+        debug.backingResizes++;
+        debug.paintCacheInvalidations++;
       }
 
-      if (cssW !== sim.lastCssW || cssH !== sim.lastCssH) {
+      const cssWDelta = Math.abs(cssW - sim.lastCssW);
+      const cssHDelta = Math.abs(cssH - sim.lastCssH);
+      const shouldResetForCssSize =
+        sim.lastCssW < 0 || sim.lastCssH < 0
+          ? true
+          : cssWDelta >= 2 || cssHDelta >= 2;
+      if (shouldResetForCssSize) {
         sim.lastCssW = cssW;
         sim.lastCssH = cssH;
         resetParticlesAndBubbles(buf, cssW, cssH);
         clearPointerBubbles(pointerBubbles);
         resetFish(fish, cssW, cssH, n);
         sim.lastAppliedFishCount = n;
+        debug.particleResets++;
+        debug.fishResets++;
       } else if (n !== sim.lastAppliedFishCount) {
         if (n > sim.lastAppliedFishCount) {
           for (let i = sim.lastAppliedFishCount; i < n; i++) {
@@ -1354,22 +1411,43 @@ function AquariumCanvasComponent({
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
+      const isStartupPhase = now - effectStartMs < STARTUP_PHASE_IN_MS;
+
       drawUnderwaterBackground(ctx, cssW, cssH, ambienceNow, timeSec, sim);
       drawDistantReef(ctx, cssW, cssH);
       drawDriftParticles(ctx, buf, ambienceNow);
       const fam = poemFontFamilyRef.current;
-      if (fam && poemFontReadyRef.current) {
+      if (!isStartupPhase && fam && poemFontReadyRef.current) {
         drawAquariumPoetry(ctx, cssW, cssH, ambienceNow, fam);
       }
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK, n, cssW);
-      drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
+      if (!isStartupPhase) {
+        drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
+      }
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_MID, n, cssW);
-      drawForegroundSeaweed(ctx, cssW, cssH, timeSec);
+      if (!isStartupPhase) {
+        drawForegroundSeaweed(ctx, cssW, cssH, timeSec);
+      }
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_FRONT, n, cssW);
       drawBubbles(ctx, buf, timeSec, cssW, cssH);
-      drawPointerBubbles(ctx, pointerBubbles, timeSec, cssW, cssH);
+      if (!isStartupPhase) {
+        drawPointerBubbles(ctx, pointerBubbles, timeSec, cssW, cssH);
+      }
 
       rafId = requestAnimationFrame(tick);
+
+      // Log once per mount after ~3 seconds; you can correlate this with the lag window.
+      if (!debug.logged && now - debug.startMs >= 3000) {
+        debug.logged = true;
+        // eslint-disable-next-line no-console
+        console.log("[AquariumCanvas debug]", {
+          cssRoundingChanges: debug.cssRoundingChanges,
+          backingResizes: debug.backingResizes,
+          paintCacheInvalidations: debug.paintCacheInvalidations,
+          particleResets: debug.particleResets,
+          fishResets: debug.fishResets,
+        });
+      }
     };
 
     rafId = requestAnimationFrame(tick);
