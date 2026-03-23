@@ -388,6 +388,7 @@ function drawFish(
   paletteId: number,
   depth: number,
 ) {
+  const paths = getFishGeometryPaths();
   const palette = FISH_PALETTES[paletteId] ?? FISH_PALETTES[0]!;
   const depthScale =
     depth === FISH_DEPTH_BACK ? 0.7 : depth === FISH_DEPTH_FRONT ? 1.14 : 1;
@@ -402,45 +403,68 @@ function drawFish(
   const H = 10;
 
   ctx.fillStyle = getFishBodyGradient(ctx, paletteId);
-  ctx.fill(FISH_BODY_PATH);
+  ctx.fill(paths.body);
 
   ctx.fillStyle = palette.fin;
-  ctx.fill(FISH_TAIL_PATH);
+  ctx.fill(paths.tail);
 
   // Lateral eye: sits inside the head ellipse (not past the snout).
   const ex = L * 0.17;
   const ey = H * 0.06;
   const eyeR = H * 0.17;
   ctx.fillStyle = "rgba(252, 252, 250, 0.94)";
-  ctx.fill(FISH_EYE_WHITE_PATH);
+  ctx.fill(paths.eyeWhite);
   ctx.fillStyle = "#1a2e32";
-  ctx.fill(FISH_EYE_PUPIL_PATH);
+  ctx.fill(paths.eyePupil);
   ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
-  ctx.fill(FISH_EYE_HIGHLIGHT_PATH);
+  ctx.fill(paths.eyeHighlight);
 
   ctx.restore();
 }
 
+type FishGeometryPaths = {
+  body: Path2D;
+  tail: Path2D;
+  eyeWhite: Path2D;
+  eyePupil: Path2D;
+  eyeHighlight: Path2D;
+};
+
 /** Unit fish geometry reused for every draw (less per-frame path work). */
-const FISH_BODY_PATH = new Path2D();
-FISH_BODY_PATH.ellipse(-22 * 0.12, 0, 22 * 0.44, 10 * 0.48, 0, 0, Math.PI * 2);
-const FISH_TAIL_PATH = new Path2D();
-FISH_TAIL_PATH.moveTo(-22 * 0.52, 0);
-FISH_TAIL_PATH.lineTo(-22 * 0.98, -10 * 0.5);
-FISH_TAIL_PATH.lineTo(-22 * 0.98, 10 * 0.5);
-FISH_TAIL_PATH.closePath();
-const FISH_EYE_WHITE_PATH = new Path2D();
-FISH_EYE_WHITE_PATH.ellipse(22 * 0.17, 10 * 0.06, 10 * 0.17 * 1.02, 10 * 0.17, 0, 0, Math.PI * 2);
-const FISH_EYE_PUPIL_PATH = new Path2D();
-FISH_EYE_PUPIL_PATH.arc(22 * 0.17 + 10 * 0.055, 10 * 0.06, 10 * 0.078, 0, Math.PI * 2);
-const FISH_EYE_HIGHLIGHT_PATH = new Path2D();
-FISH_EYE_HIGHLIGHT_PATH.arc(
-  22 * 0.17 + 10 * 0.04,
-  10 * 0.06 - 10 * 0.03,
-  10 * 0.028,
-  0,
-  Math.PI * 2,
-);
+let fishGeometryPaths: FishGeometryPaths | null = null;
+
+function getFishGeometryPaths(): FishGeometryPaths {
+  if (fishGeometryPaths) return fishGeometryPaths;
+  const body = new Path2D();
+  body.ellipse(-22 * 0.12, 0, 22 * 0.44, 10 * 0.48, 0, 0, Math.PI * 2);
+  const tail = new Path2D();
+  tail.moveTo(-22 * 0.52, 0);
+  tail.lineTo(-22 * 0.98, -10 * 0.5);
+  tail.lineTo(-22 * 0.98, 10 * 0.5);
+  tail.closePath();
+  const eyeWhite = new Path2D();
+  eyeWhite.ellipse(
+    22 * 0.17,
+    10 * 0.06,
+    10 * 0.17 * 1.02,
+    10 * 0.17,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  const eyePupil = new Path2D();
+  eyePupil.arc(22 * 0.17 + 10 * 0.055, 10 * 0.06, 10 * 0.078, 0, Math.PI * 2);
+  const eyeHighlight = new Path2D();
+  eyeHighlight.arc(
+    22 * 0.17 + 10 * 0.04,
+    10 * 0.06 - 10 * 0.03,
+    10 * 0.028,
+    0,
+    Math.PI * 2,
+  );
+  fishGeometryPaths = { body, tail, eyeWhite, eyePupil, eyeHighlight };
+  return fishGeometryPaths;
+}
 
 /** Horizontal slack so fish slightly past the edge still draw (body + bob is smaller than this). */
 const FISH_DRAW_MARGIN_X = 72;
@@ -895,12 +919,19 @@ function ensureAquariumPaintCache(
 }
 
 /** Unit beam reused for every daylight ray. */
-const DAY_RAY_PATH = new Path2D();
-DAY_RAY_PATH.moveTo(-0.5, 0);
-DAY_RAY_PATH.lineTo(0.5, 0);
-DAY_RAY_PATH.lineTo(1.65, 0.88);
-DAY_RAY_PATH.lineTo(-1.65, 0.88);
-DAY_RAY_PATH.closePath();
+let dayRayPath: Path2D | null = null;
+
+function getDayRayPath(): Path2D {
+  if (dayRayPath) return dayRayPath;
+  const next = new Path2D();
+  next.moveTo(-0.5, 0);
+  next.lineTo(0.5, 0);
+  next.lineTo(1.65, 0.88);
+  next.lineTo(-1.65, 0.88);
+  next.closePath();
+  dayRayPath = next;
+  return next;
+}
 
 /** Soft god-rays from the surface — low contrast, few beams. */
 function drawDayLightRays(
@@ -910,6 +941,7 @@ function drawDayLightRays(
   timeSec: number,
   verticalRayGradient: CanvasGradient,
 ) {
+  const rayPath = getDayRayPath();
   ctx.save();
   const cx = width * 0.5;
   const rayCount = 5;
@@ -927,7 +959,7 @@ function drawDayLightRays(
     ctx.fillStyle = verticalRayGradient;
 
     ctx.scale(beamNarrow, height);
-    ctx.fill(DAY_RAY_PATH);
+    ctx.fill(rayPath);
     ctx.restore();
   }
   ctx.restore();
