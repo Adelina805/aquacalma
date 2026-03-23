@@ -65,7 +65,7 @@ function effectiveCanvasDpr(
 const MAX_PARTICLES = 56;
 const MAX_BUBBLES = 24;
 /** Cursor / touch trail bubbles — small pool, same look as background bubbles. */
-const MAX_POINTER_BUBBLES = 40;
+const MAX_POINTER_BUBBLES = 32;
 /** Default school size (user can add fish up to `MAX_FISH_COUNT`). */
 export const DEFAULT_FISH_COUNT = 10;
 /** Upper bound for extra fish — keeps mobile GPUs happier. */
@@ -212,7 +212,8 @@ function initFishIndex(fish: FishSchool, i: number, w: number, h: number) {
 
   const sizeT = Math.random();
   fish.size[i] = 0.72 + sizeT * 0.78;
-  const baseSpeed = 14 + Math.random() * 62;
+  // Lower base drift speed for a calmer feel.
+  const baseSpeed = 12 + Math.random() * 44;
   const depthSpeedMul =
     fish.depth[i] === FISH_DEPTH_BACK
       ? 0.78 + Math.random() * 0.12
@@ -256,19 +257,19 @@ function stepFish(
   const margin = 40;
   const top = h * 0.14;
   const bottom = h * 0.86;
-  const influenceR = Math.min(320, Math.min(w, h) * 0.52);
+  const influenceR = Math.min(320, Math.min(w, h) * 0.42);
   const personal = 56;
-  const maxSteer = 58;
-  const follow = 1;
-  const flee = 1.35;
-  const maxSpeedBoost = 0.52;
-  const boostOnFlip = 0.36;
-  const pointerBoostPerSec = 2.4;
-  const boostDecayPerSec = 2.15;
+  const maxSteer = 46;
+  const follow = 0.78;
+  const flee = 1.1;
+  const maxSpeedBoost = 0.36;
+  const boostOnFlip = 0.22;
+  const pointerBoostPerSec = 1.6;
+  const boostDecayPerSec = 1.65;
 
   // Same for every fish this frame — hoisted out of the loop.
-  const followRate = Math.min(1, 8 * dt);
-  const decay = pointer.inCanvas ? 1 : Math.max(0, 1 - 2.4 * dt);
+  const followRate = Math.min(1, 6 * dt);
+  const decay = pointer.inCanvas ? 1 : Math.max(0, 1 - 1.9 * dt);
   const halfW = w * 0.5;
   const influenceRSq = influenceR * influenceR;
   /** Skip pointer math when the cursor is outside the tank. */
@@ -291,16 +292,17 @@ function stepFish(
       if (distSq > 0.5625 && distSq < influenceRSq) {
         const dist = Math.sqrt(distSq);
         // In the close zone, flee pushes opposite the base swim when the pointer is *ahead*
-        // of the fish (same side as the mouth), so horizontal speed cancels and the fish
-        // looks frozen. Turn around once so swimming matches fleeing.
+        // of the fish (same side as the mouth).
+        //
+        // For a calmer feel, avoid a sharp reversal. Instead, damp horizontal motion and
+        // let steering do the visible part of the reaction.
         if (dist < personal) {
           const pointerAhead = fish.dir[i]! * dx > 2;
           if (pointerAhead) {
-            fish.dir[i]! *= -1;
             fish.vxOff[i] = 0;
             fish.speedBoost[i] = Math.min(
               maxSpeedBoost,
-              fish.speedBoost[i] + boostOnFlip,
+              fish.speedBoost[i] + boostOnFlip * 0.35,
             );
           }
         }
@@ -451,7 +453,7 @@ function drawFishSchool(
     const x = fish.x[i];
     if (x < left || x > right) continue;
 
-    const bobHz = 0.95 + i * 0.11;
+    const bobHz = 0.78 + i * 0.085;
     const bobAmp =
       fish.depth[i] === FISH_DEPTH_BACK
         ? 0.72
@@ -461,7 +463,8 @@ function drawFishSchool(
     const bob =
       Math.sin(timeSec * bobHz + fish.bobPhase[i]) *
       (5 + fish.size[i] * 9) *
-      bobAmp;
+      bobAmp *
+      0.72;
     drawFish(
       ctx,
       x,
@@ -520,12 +523,12 @@ function resetParticlesAndBubbles(buf: FloatBuffers, w: number, h: number) {
     buf.pop[i] = 0.07 + Math.random() * 0.14;
   }
 
-  buf.bCount = Math.min(MAX_BUBBLES, Math.max(10, (w / 72) | 0));
+  buf.bCount = Math.min(MAX_BUBBLES, Math.max(8, (w / 92) | 0));
   for (let i = 0; i < buf.bCount; i++) {
     buf.bx[i] = Math.random() * w;
     buf.by[i] = h * 0.35 + Math.random() * h * 0.65;
     buf.br[i] = 1.1 + Math.random() * 2;
-    buf.bRise[i] = 11 + Math.random() * 14;
+    buf.bRise[i] = 9 + Math.random() * 10;
     buf.bPhase[i] = Math.random() * Math.PI * 2;
   }
 }
@@ -549,7 +552,7 @@ function stepBubbles(
   timeSec: number,
 ) {
   for (let i = 0; i < buf.bCount; i++) {
-    buf.bx[i] += Math.sin(timeSec * 0.22 + buf.bPhase[i]) * 2.2 * dt;
+    buf.bx[i] += Math.sin(timeSec * 0.18 + buf.bPhase[i]) * 1.6 * dt;
     buf.by[i] -= buf.bRise[i] * dt;
 
     if (buf.by[i] < -buf.br[i] * 4) {
@@ -592,7 +595,7 @@ function drawBubbleSprite(
 ) {
   ctx.lineWidth = 1;
   const shimmer =
-    0.28 + Math.sin(timeSec * 0.35 + phase + shimmerSeed * 0.7) * 0.06;
+    0.26 + Math.sin(timeSec * 0.25 + phase + shimmerSeed * 0.6) * 0.04;
 
   ctx.globalAlpha = shimmer;
   ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
@@ -678,14 +681,14 @@ function spawnPointerBubble(
   pb.active[slot] = 1;
   pb.px[slot] = Math.min(
     w - margin,
-    Math.max(margin, cx + (Math.random() - 0.5) * 16),
+    Math.max(margin, cx + (Math.random() - 0.5) * 11),
   );
   pb.py[slot] = Math.min(
     h - margin,
-    Math.max(margin, cy + (Math.random() - 0.5) * 12),
+    Math.max(margin, cy + (Math.random() - 0.5) * 8),
   );
   pb.pr[slot] = 0.75 + Math.random() * 1.35;
-  pb.pRise[slot] = 13 + Math.random() * 16;
+  pb.pRise[slot] = 10 + Math.random() * 12;
   pb.pPhase[slot] = Math.random() * Math.PI * 2;
 }
 
@@ -697,7 +700,7 @@ function stepPointerBubbles(
 ) {
   for (let i = 0; i < MAX_POINTER_BUBBLES; i++) {
     if (pb.active[i] === 0) continue;
-    pb.px[i] += Math.sin(timeSec * 0.22 + pb.pPhase[i]) * 2.2 * dt;
+    pb.px[i] += Math.sin(timeSec * 0.18 + pb.pPhase[i]) * 1.5 * dt;
     pb.py[i] -= pb.pRise[i] * dt;
     if (pb.py[i] < -pb.pr[i] * 4) pb.active[i] = 0;
     if (pb.px[i] < -24) pb.px[i] = w + 12;
@@ -715,7 +718,7 @@ function drawPointerBubbles(
   ctx.save();
   for (let i = 0; i < MAX_POINTER_BUBBLES; i++) {
     if (pb.active[i] === 0) continue;
-    const x = pb.px[i] + Math.sin(timeSec * 0.5 + pb.pPhase[i]) * 5;
+    const x = pb.px[i] + Math.sin(timeSec * 0.38 + pb.pPhase[i]) * 3.6;
     const y = pb.py[i];
     const r = pb.pr[i];
     if (
@@ -865,7 +868,7 @@ function drawDayLightRays(
     const originX = cx + t * width * 0.72;
     const angle = t * 0.11;
     const beamNarrow = width * (0.028 + (i % 2) * 0.014);
-    const breath = 0.88 + 0.12 * Math.sin(timeSec * 0.35 + i * 0.9);
+    const breath = 0.9 + 0.08 * Math.sin(timeSec * 0.25 + i * 0.9);
 
     ctx.save();
     ctx.translate(originX, 0);
@@ -896,7 +899,7 @@ function drawNightBiolumGlow(
   ctx.save();
   for (let si = 0; si < NIGHT_BIOLOUM_SPOTS.length; si++) {
     const s = NIGHT_BIOLOUM_SPOTS[si]!;
-    const pulse = 0.55 + 0.45 * Math.sin(timeSec * 0.42 + s.phase);
+    const pulse = 0.57 + 0.3 * Math.sin(timeSec * 0.32 + s.phase);
     ctx.globalAlpha = pulse;
     ctx.fillStyle = grads[si]!;
     ctx.fillRect(0, 0, width, height);
@@ -1058,7 +1061,7 @@ function drawMidgroundRocksAndPlants(
 
   const fan = (cx: number, base: number, scale: number, phase: number) => {
     const s = scale * Math.min(width, height) * 0.12;
-    const angle = Math.sin(timeSec * 0.35 + phase) * 0.065;
+    const angle = Math.sin(timeSec * 0.26 + phase) * 0.045;
 
     ctx.save();
     ctx.translate(cx, base);
@@ -1100,8 +1103,8 @@ function drawForegroundSeaweed(
     thickness: number,
     phase: number,
   ) => {
-    const swayLean = Math.sin(timeSec * 0.42 + phase) * width * 0.012;
-    const swayMid = Math.sin(timeSec * 0.28 + phase * 1.6) * width * 0.005;
+    const swayLean = Math.sin(timeSec * 0.3 + phase) * width * 0.009;
+    const swayMid = Math.sin(timeSec * 0.22 + phase * 1.35) * width * 0.0035;
     const leanAdj = lean + swayLean;
     const tipX = rootX + leanAdj;
     const tipY = baseY - reach;
@@ -1384,14 +1387,19 @@ function AquariumCanvasComponent({
         pointerSpawn.lastY = p.y;
         return;
       }
-      const elapsed = now - pointerSpawn.lastT;
-      if (elapsed < 0.055) return;
-      if (dist < 4 && elapsed < 0.38) return;
+      const elapsedMs = now - pointerSpawn.lastT;
+      // `performance.now()` is milliseconds; the original thresholds were in seconds.
+      // This bug causes very frequent bubble spawns. Fixing it makes the motion calmer
+      // and reduces per-frame canvas work.
+      if (elapsedMs < 55) return;
+      if (dist < 4 && elapsedMs < 380) return;
+      const elapsedS = elapsedMs * 0.001;
+      const speedPxPerSec = dist / Math.max(1e-3, elapsedS);
       pointerSpawn.lastT = now;
       pointerSpawn.lastX = p.x;
       pointerSpawn.lastY = p.y;
       spawnPointerBubble(pointerBubbles, p.x, p.y, w, h);
-      if (dist > 22 && Math.random() < 0.32) {
+      if (dist > 22 && speedPxPerSec > 250 && Math.random() < 0.18) {
         spawnPointerBubble(pointerBubbles, p.x, p.y, w, h);
       }
     };
@@ -1416,7 +1424,7 @@ function AquariumCanvasComponent({
       pointerSpawn.lastX = p.x;
       pointerSpawn.lastY = p.y;
       pointerSpawn.initialized = true;
-      const burst = e.pointerType === "touch" || e.pointerType === "pen" ? 3 : 2;
+      const burst = e.pointerType === "touch" || e.pointerType === "pen" ? 2 : 1;
       for (let k = 0; k < burst; k++) {
         spawnPointerBubble(pointerBubbles, p.x, p.y, w, h);
       }
