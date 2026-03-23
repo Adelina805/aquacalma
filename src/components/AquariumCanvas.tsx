@@ -44,7 +44,7 @@ const MAX_POINTER_BUBBLES = 40;
 /** Default school size (user can add fish up to `MAX_FISH_COUNT`). */
 export const DEFAULT_FISH_COUNT = 10;
 /** Upper bound for extra fish — keeps mobile GPUs happier. */
-export const MAX_FISH_COUNT = 28;
+export const MAX_FISH_COUNT = 40;
 
 /** 0 = behind midground, 1 = between midground & seaweed, 2 = in front of seaweed (near glass). */
 const FISH_DEPTH_BACK = 0;

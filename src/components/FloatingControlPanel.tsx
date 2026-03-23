@@ -138,7 +138,7 @@ export default function FloatingControlPanel({
   const resetIconBtn = noExtras
     ? isNight
       ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-600"
+      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
     : isNight
       ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/[0.88] transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/[0.09] active:scale-[0.97] active:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
       : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-950 transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/90 active:scale-[0.97] active:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
