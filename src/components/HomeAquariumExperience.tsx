@@ -21,8 +21,8 @@ export default function HomeAquariumExperience() {
     <div
       className={
         isNight
-          ? `relative h-dvh w-full overflow-hidden bg-slate-950 ${poemFont.className}`
-          : `relative h-dvh w-full overflow-hidden bg-linear-to-b from-sky-100 via-cyan-50/80 to-slate-200 ${poemFont.className}`
+          ? "relative h-dvh w-full overflow-hidden bg-slate-950"
+          : "relative h-dvh w-full overflow-hidden bg-linear-to-b from-sky-50/95 via-cyan-50/55 to-slate-100/90"
       }
     >
       <h1 className="sr-only">
@@ -38,7 +38,7 @@ export default function HomeAquariumExperience() {
         />
       </div>
 
-      <aside className="absolute bottom-5 right-5 z-10 sm:bottom-8 sm:right-8">
+      <aside className="pointer-events-none absolute inset-e-[max(1.25rem,env(safe-area-inset-right))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 w-max max-w-[min(100vw-2rem,20rem)] sm:inset-e-[max(1.75rem,env(safe-area-inset-right))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))]">
         <FloatingControlPanel
           isNight={isNight}
           onToggleDayNight={() => setIsNight((v) => !v)}
