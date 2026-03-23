@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  memo,
   useEffect,
   useRef,
-  useLayoutEffect,
   type MutableRefObject,
 } from "react";
 
@@ -35,6 +35,9 @@ function updatePointerCanvasState(
     clientY >= rect.top &&
     clientY < rect.bottom;
 }
+
+/** Cap backing-store resolution so 3×/2.5× phones are not asked to shade ~9× the pixels of 1×. */
+const MAX_CANVAS_DPR = 2;
 
 /** Hard caps keep phones cool; count scales down with smaller canvases. */
 const MAX_PARTICLES = 56;
@@ -102,6 +105,28 @@ function createFishSchool(capacity: number): FishSchool {
   };
 }
 
+/** Hoisted: avoid allocating each `stepFish` call (once per frame). */
+const FISH_DEPTH_REACT: readonly number[] = [0.88, 1.12, 1.38];
+
+const AQUARIUM_POEM_TAGLINES: readonly string[] = [
+  "A soothing, interactive aquarium",
+  "with calm motion, gentle taps,",
+  "and a quiet home on palm or desk.",
+];
+
+type NightBiolumSpot = {
+  ux: number;
+  uy: number;
+  r: number;
+  phase: number;
+};
+
+const NIGHT_BIOLOUM_SPOTS: readonly NightBiolumSpot[] = [
+  { ux: 0.2, uy: 0.58, r: 0.32, phase: 0 },
+  { ux: 0.82, uy: 0.52, r: 0.26, phase: 1.15 },
+  { ux: 0.5, uy: 0.68, r: 0.36, phase: 2.05 },
+];
+
 /** Two per depth band — cycles for fish beyond the first six. */
 const FISH_DEPTH_CYCLE: readonly number[] = [
   FISH_DEPTH_BACK,
@@ -161,7 +186,6 @@ function stepFish(
   const maxSteer = 58;
   const follow = 1;
   const flee = 1.35;
-  const depthReact: readonly number[] = [0.88, 1.12, 1.38];
   const maxSpeedBoost = 0.52;
   const boostOnFlip = 0.36;
   const pointerBoostPerSec = 2.4;
@@ -199,7 +223,7 @@ function stepFish(
         const edge = 1 - dist / influenceR;
         // Softer than edge² so mid-range fish still steer clearly toward the pointer.
         const falloff = Math.pow(edge, 1.2);
-        const dFac = depthReact[fish.depth[i]!] ?? 1;
+        const dFac = FISH_DEPTH_REACT[fish.depth[i]!] ?? 1;
         let along: number;
         if (dist < personal) {
           const t = 1 - dist / personal;
@@ -240,15 +264,44 @@ function stepFish(
   }
 }
 
+/** One gradient per palette per context — fish drawing uses unit L=22,H=10 then scales by `size`. */
+const fishBodyGradientCache = new WeakMap<
+  CanvasRenderingContext2D,
+  (CanvasGradient | undefined)[]
+>();
+
+function getFishBodyGradient(
+  ctx: CanvasRenderingContext2D,
+  paletteId: number,
+): CanvasGradient {
+  let row = fishBodyGradientCache.get(ctx);
+  if (!row) {
+    row = [];
+    fishBodyGradientCache.set(ctx, row);
+  }
+  let g = row[paletteId];
+  if (!g) {
+    const pal = FISH_PALETTES[paletteId] ?? FISH_PALETTES[0]!;
+    const H = 10;
+    g = ctx.createLinearGradient(0, -H * 0.55, 0, H * 0.55);
+    g.addColorStop(0, pal.dorsal);
+    g.addColorStop(0.42, pal.mid);
+    g.addColorStop(1, pal.belly);
+    row[paletteId] = g;
+  }
+  return g;
+}
+
 function drawFish(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   size: number,
   dir: number,
-  palette: FishPalette,
+  paletteId: number,
   depth: number,
 ) {
+  const palette = FISH_PALETTES[paletteId] ?? FISH_PALETTES[0]!;
   const depthScale =
     depth === FISH_DEPTH_BACK ? 0.7 : depth === FISH_DEPTH_FRONT ? 1.14 : 1;
   const alpha =
@@ -257,15 +310,11 @@ function drawFish(
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.translate(x, y);
-  ctx.scale(dir * depthScale, depthScale);
-  const L = 22 * size;
-  const H = 10 * size;
+  ctx.scale(dir * depthScale * size, depthScale * size);
+  const L = 22;
+  const H = 10;
 
-  const bodyGrad = ctx.createLinearGradient(0, -H * 0.55, 0, H * 0.55);
-  bodyGrad.addColorStop(0, palette.dorsal);
-  bodyGrad.addColorStop(0.42, palette.mid);
-  bodyGrad.addColorStop(1, palette.belly);
-  ctx.fillStyle = bodyGrad;
+  ctx.fillStyle = getFishBodyGradient(ctx, paletteId);
   ctx.beginPath();
   ctx.ellipse(-L * 0.12, 0, L * 0.44, H * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -318,14 +367,13 @@ function drawFishSchool(
       Math.sin(timeSec * bobHz + fish.bobPhase[i]) *
       (5 + fish.size[i] * 9) *
       bobAmp;
-    const pal = FISH_PALETTES[fish.paletteId[i]!] ?? FISH_PALETTES[0]!;
     drawFish(
       ctx,
       fish.x[i],
       fish.y[i] + bob,
       fish.size[i],
       fish.dir[i],
-      pal,
+      fish.paletteId[i]!,
       fish.depth[i]!,
     );
   }
@@ -615,14 +663,8 @@ function drawNightBiolumGlow(
 ) {
   ctx.save();
   const m = Math.min(width, height);
-  const spots: readonly { ux: number; uy: number; r: number; phase: number }[] =
-    [
-      { ux: 0.2, uy: 0.58, r: 0.32, phase: 0 },
-      { ux: 0.82, uy: 0.52, r: 0.26, phase: 1.15 },
-      { ux: 0.5, uy: 0.68, r: 0.36, phase: 2.05 },
-    ];
 
-  for (const s of spots) {
+  for (const s of NIGHT_BIOLOUM_SPOTS) {
     const pulse = 0.55 + 0.45 * Math.sin(timeSec * 0.42 + s.phase);
     const gx = width * s.ux;
     const gy = height * s.uy;
@@ -868,17 +910,11 @@ function drawAquariumPoetry(
 ) {
   const cx = w * 0.5;
   const title = "Virtual Fishtank";
-  const taglines = [
-    "A soothing, interactive aquarium",
-    "with calm motion, gentle taps,",
-    "and a quiet home on palm or desk.",
-  ];
-
   const titleSize = Math.max(26, Math.min(56, w * 0.09));
   const lineSize = Math.max(15, Math.min(26, w * 0.042));
   const lineHeight = lineSize * 1.42;
   const blockHalfHeight =
-    (titleSize * 1.1 + taglines.length * lineHeight) * 0.5;
+    (titleSize * 1.1 + AQUARIUM_POEM_TAGLINES.length * lineHeight) * 0.5;
   const cy = h * 0.24;
 
   ctx.save();
@@ -908,7 +944,7 @@ function drawAquariumPoetry(
   ctx.shadowBlur = night ? 14 : 10;
   ctx.font = `400 ${lineSize}px ${fontFamily}`;
   ctx.fillStyle = lineFill;
-  for (const line of taglines) {
+  for (const line of AQUARIUM_POEM_TAGLINES) {
     ctx.fillText(line, cx, y);
     y += lineHeight;
   }
@@ -916,16 +952,61 @@ function drawAquariumPoetry(
   ctx.restore();
 }
 
+/**
+ * Mutable settings read every animation frame — keep them in a ref so the canvas can stay memoized
+ * while React state updates only the control panel.
+ */
+export type AquariumRuntimeSettings = {
+  ambience: AquariumAmbience;
+  /** Clamped each frame to DEFAULT…MAX. */
+  fishCount: number;
+};
+
 type AquariumCanvasProps = {
   /** Optional ref to read the latest pointer position in canvas coordinates (no re-renders). */
   pointerCanvasRef?: MutableRefObject<PointerCanvasState>;
-  /** Water and light treatment; read on each frame via ref so toggling does not restart the loop. */
+  /**
+   * When provided, ambience and fish count are read here each frame (not from props).
+   * When omitted, an internal ref is kept in sync from `ambience` / `fishCount` props each render.
+   */
+  runtimeSettingsRef?: MutableRefObject<AquariumRuntimeSettings>;
+  /** Used only if `runtimeSettingsRef` is not passed. */
   ambience?: AquariumAmbience;
-  /** School size; values outside DEFAULT…MAX are clamped. */
+  /** Used only if `runtimeSettingsRef` is not passed. */
   fishCount?: number;
   /** CSS `font-family` value (e.g. from `next/font`) for centered poetry drawn under the fish. */
   poemFontFamily?: string;
 };
+
+/** All per-tank simulation data — lives outside React state; owned by the RAF loop + one ref. */
+type AquariumCanvasSimulation = {
+  buf: FloatBuffers;
+  fish: FishSchool;
+  pointerBubbles: PointerBubbleBuf;
+  pointerSpawn: {
+    lastT: number;
+    lastX: number;
+    lastY: number;
+    initialized: boolean;
+  };
+  lastCssW: number;
+  lastCssH: number;
+  lastNow: number;
+  lastAppliedFishCount: number;
+};
+
+function createAquariumSimulation(): AquariumCanvasSimulation {
+  return {
+    buf: createBuffers(),
+    fish: createFishSchool(MAX_FISH_COUNT),
+    pointerBubbles: createPointerBubbleBuf(),
+    pointerSpawn: { lastT: 0, lastX: 0, lastY: 0, initialized: false },
+    lastCssW: -1,
+    lastCssH: -1,
+    lastNow: 0,
+    lastAppliedFishCount: 0,
+  };
+}
 
 function clampFishCount(n: number) {
   return Math.min(
@@ -934,8 +1015,9 @@ function clampFishCount(n: number) {
   );
 }
 
-export default function AquariumCanvas({
+function AquariumCanvasComponent({
   pointerCanvasRef: pointerCanvasRefProp,
+  runtimeSettingsRef: runtimeSettingsRefProp,
   ambience = "night",
   fishCount = DEFAULT_FISH_COUNT,
   poemFontFamily,
@@ -948,20 +1030,20 @@ export default function AquariumCanvas({
     inCanvas: false,
   });
   const pointerCanvasRef = pointerCanvasRefProp ?? pointerCanvasRefInternal;
-  const ambienceRef = useRef<AquariumAmbience>(ambience);
-  useLayoutEffect(() => {
-    ambienceRef.current = ambience;
-  }, [ambience]);
 
-  const fishCountRef = useRef(clampFishCount(fishCount));
-  useLayoutEffect(() => {
-    fishCountRef.current = clampFishCount(fishCount);
-  }, [fishCount]);
+  const fallbackRuntimeRef = useRef<AquariumRuntimeSettings>({
+    ambience,
+    fishCount: clampFishCount(fishCount),
+  });
+  if (!runtimeSettingsRefProp) {
+    fallbackRuntimeRef.current.ambience = ambience;
+    fallbackRuntimeRef.current.fishCount = clampFishCount(fishCount);
+  }
+  const runtimeSettingsRef =
+    runtimeSettingsRefProp ?? fallbackRuntimeRef;
 
   const poemFontFamilyRef = useRef(poemFontFamily);
-  useLayoutEffect(() => {
-    poemFontFamilyRef.current = poemFontFamily;
-  }, [poemFontFamily]);
+  poemFontFamilyRef.current = poemFontFamily;
 
   const poemFontReadyRef = useRef(!poemFontFamily);
   useEffect(() => {
@@ -984,6 +1066,8 @@ export default function AquariumCanvas({
     };
   }, [poemFontFamily]);
 
+  const simulationRef = useRef<AquariumCanvasSimulation | null>(null);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -991,21 +1075,14 @@ export default function AquariumCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const buf = createBuffers();
-    const pointerBubbles = createPointerBubbleBuf();
-    const fish = createFishSchool(MAX_FISH_COUNT);
-    let rafId = 0;
-    let lastCssW = -1;
-    let lastCssH = -1;
-    let lastNow = 0;
-    let lastAppliedFishCount = 0;
+    let sim = simulationRef.current;
+    if (!sim) {
+      sim = createAquariumSimulation();
+      simulationRef.current = sim;
+    }
 
-    const pointerSpawn = {
-      lastT: 0,
-      lastX: 0,
-      lastY: 0,
-      initialized: false,
-    };
+    const { buf, fish, pointerBubbles, pointerSpawn } = sim;
+    let rafId = 0;
 
     const trySpawnPointerTrail = () => {
       const p = pointerCanvasRef.current;
@@ -1078,32 +1155,37 @@ export default function AquariumCanvas({
 
     const tick = (now: number) => {
       const timeSec = now * 0.001;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(
+        MAX_CANVAS_DPR,
+        Math.max(1, window.devicePixelRatio || 1),
+      );
       const cssW = Math.max(1, Math.round(canvas.clientWidth));
       const cssH = Math.max(1, Math.round(canvas.clientHeight));
 
-      if (lastNow === 0) lastNow = now;
-      const dt = Math.min(0.05, Math.max(0, (now - lastNow) / 1000));
-      lastNow = now;
+      if (sim.lastNow === 0) sim.lastNow = now;
+      const dt = Math.min(0.05, Math.max(0, (now - sim.lastNow) / 1000));
+      sim.lastNow = now;
 
-      const n = fishCountRef.current;
+      const rs = runtimeSettingsRef.current;
+      const n = clampFishCount(rs.fishCount);
+      const ambienceNow = rs.ambience;
 
-      if (cssW !== lastCssW || cssH !== lastCssH) {
+      if (cssW !== sim.lastCssW || cssH !== sim.lastCssH) {
         canvas.width = Math.round(cssW * dpr);
         canvas.height = Math.round(cssH * dpr);
-        lastCssW = cssW;
-        lastCssH = cssH;
+        sim.lastCssW = cssW;
+        sim.lastCssH = cssH;
         resetParticlesAndBubbles(buf, cssW, cssH);
         clearPointerBubbles(pointerBubbles);
         resetFish(fish, cssW, cssH, n);
-        lastAppliedFishCount = n;
-      } else if (n !== lastAppliedFishCount) {
-        if (n > lastAppliedFishCount) {
-          for (let i = lastAppliedFishCount; i < n; i++) {
+        sim.lastAppliedFishCount = n;
+      } else if (n !== sim.lastAppliedFishCount) {
+        if (n > sim.lastAppliedFishCount) {
+          for (let i = sim.lastAppliedFishCount; i < n; i++) {
             initFishIndex(fish, i, cssW, cssH);
           }
         }
-        lastAppliedFishCount = n;
+        sim.lastAppliedFishCount = n;
       }
 
       stepParticles(buf, cssW, cssH, dt);
@@ -1114,12 +1196,12 @@ export default function AquariumCanvas({
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
-      drawUnderwaterBackground(ctx, cssW, cssH, ambienceRef.current, timeSec);
+      drawUnderwaterBackground(ctx, cssW, cssH, ambienceNow, timeSec);
       drawDistantReef(ctx, cssW, cssH);
-      drawDriftParticles(ctx, buf, ambienceRef.current);
+      drawDriftParticles(ctx, buf, ambienceNow);
       const fam = poemFontFamilyRef.current;
       if (fam && poemFontReadyRef.current) {
-        drawAquariumPoetry(ctx, cssW, cssH, ambienceRef.current, fam);
+        drawAquariumPoetry(ctx, cssW, cssH, ambienceNow, fam);
       }
       drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK, n);
       drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
@@ -1140,8 +1222,9 @@ export default function AquariumCanvas({
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("pointercancel", onPointerCancel);
+      simulationRef.current = null;
     };
-  }, [pointerCanvasRef]);
+  }, [pointerCanvasRef, runtimeSettingsRef]);
 
   return (
     <div ref={containerRef} className="h-full w-full min-h-0">
@@ -1153,3 +1236,6 @@ export default function AquariumCanvas({
     </div>
   );
 }
+
+const AquariumCanvas = memo(AquariumCanvasComponent);
+export default AquariumCanvas;

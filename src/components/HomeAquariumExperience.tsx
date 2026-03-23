@@ -1,10 +1,11 @@
 "use client";
 
 import { Dancing_Script } from "next/font/google";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import AquariumCanvas, {
   DEFAULT_FISH_COUNT,
   MAX_FISH_COUNT,
+  type AquariumRuntimeSettings,
 } from "@/src/components/AquariumCanvas";
 import FloatingControlPanel from "@/src/components/FloatingControlPanel";
 
@@ -16,6 +17,13 @@ const poemFont = Dancing_Script({
 export default function HomeAquariumExperience() {
   const [isNight, setIsNight] = useState(true);
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
+
+  const runtimeSettingsRef = useRef<AquariumRuntimeSettings>({
+    ambience: "night",
+    fishCount: DEFAULT_FISH_COUNT,
+  });
+  runtimeSettingsRef.current.ambience = isNight ? "night" : "day";
+  runtimeSettingsRef.current.fishCount = fishCount;
 
   return (
     <div
@@ -32,8 +40,7 @@ export default function HomeAquariumExperience() {
 
       <div className="absolute inset-0 z-0 min-h-0">
         <AquariumCanvas
-          ambience={isNight ? "night" : "day"}
-          fishCount={fishCount}
+          runtimeSettingsRef={runtimeSettingsRef}
           poemFontFamily={poemFont.style.fontFamily}
         />
       </div>
