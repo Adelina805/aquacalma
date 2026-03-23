@@ -12,14 +12,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+function getMetadataBase(): URL {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return new URL(process.env.NEXT_PUBLIC_SITE_URL);
+  }
+  if (process.env.VERCEL_URL) {
+    return new URL(`https://${process.env.VERCEL_URL}`);
+  }
+  return new URL("http://localhost:3000");
+}
+
+const siteTitle =
+  "Virtual Fishtank — A Calm, Living Aquarium in Your Browser";
+const siteDescription =
+  "Drift through glass-clear water painted with slow light: layered fish glide past, your cursor sends soft ripples across the surface, and the whole tank breathes with you. A quiet, visually rich pocket of ocean for focus, rest, or a gentler moment between tasks.";
+
 export const metadata: Metadata = {
+  metadataBase: getMetadataBase(),
+  applicationName: "Virtual Fishtank",
   title: {
-    default:
-      "Virtual Fishtank — Relaxing Interactive Aquarium in Your Browser",
+    default: siteTitle,
     template: "%s | Virtual Fishtank",
   },
-  description:
-    "Relax with an interactive virtual fishtank: calming layered fish, cursor ripples, and rich visuals built for smooth, mobile-friendly play in your browser.",
+  description: siteDescription,
   keywords: [
     "virtual fishtank",
     "interactive aquarium",
@@ -30,19 +45,27 @@ export const metadata: Metadata = {
     "mobile-friendly",
     "canvas aquarium",
   ],
+  authors: [{ name: "Virtual Fishtank" }],
+  creator: "Virtual Fishtank",
   openGraph: {
-    title:
-      "Virtual Fishtank — Relaxing Interactive Aquarium in Your Browser",
-    description:
-      "Relax with an interactive virtual fishtank: calming layered fish, cursor ripples, and rich visuals built for smooth, mobile-friendly play in your browser.",
+    title: siteTitle,
+    description: siteDescription,
     type: "website",
+    url: "/",
+    siteName: "Virtual Fishtank",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title:
-      "Virtual Fishtank — Relaxing Interactive Aquarium in Your Browser",
-    description:
-      "Relax with an interactive virtual fishtank: calming layered fish, cursor ripples, and rich visuals built for smooth, mobile-friendly play in your browser.",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
