@@ -76,7 +76,9 @@ const FISH_DEPTH_BACK = 0;
 const FISH_DEPTH_MID = 1;
 const FISH_DEPTH_FRONT = 2;
 /** Keep first paint lighter; full scene appears quickly after mount. */
-const STARTUP_PHASE_IN_MS = 800;
+const OPENING_PRIMARY_MS = 1000;
+const SECONDARY_FADE_DELAY_MS = 120;
+const SECONDARY_FADE_IN_MS = 820;
 
 /** Simple fish: horizontal drift; vertical bob applied when drawing. */
 type FishSchool = {
@@ -161,6 +163,30 @@ const FISH_DEPTH_CYCLE: readonly number[] = [
   FISH_DEPTH_FRONT,
 ];
 
+const OPENING_HERO_FISH: readonly {
+  ux: number;
+  uy: number;
+  dir: -1 | 1;
+  size: number;
+  depth: number;
+  speed: number;
+  paletteId: number;
+}[] = [
+  { ux: 0.2, uy: 0.34, dir: 1, size: 1.18, depth: FISH_DEPTH_FRONT, speed: 34, paletteId: 1 },
+  { ux: 0.36, uy: 0.28, dir: 1, size: 1.04, depth: FISH_DEPTH_MID, speed: 29, paletteId: 3 },
+  { ux: 0.7, uy: 0.38, dir: -1, size: 1.12, depth: FISH_DEPTH_FRONT, speed: 36, paletteId: 8 },
+  { ux: 0.54, uy: 0.47, dir: -1, size: 0.96, depth: FISH_DEPTH_BACK, speed: 24, paletteId: 0 },
+];
+
+function clamp01(n: number) {
+  return Math.max(0, Math.min(1, n));
+}
+
+function easeOutCubic(t: number) {
+  const c = clamp01(t);
+  return 1 - Math.pow(1 - c, 3);
+}
+
 function initFishIndex(fish: FishSchool, i: number, w: number, h: number) {
   const top = h * 0.14;
   const bottom = h * 0.86;
@@ -190,6 +216,22 @@ function initFishIndex(fish: FishSchool, i: number, w: number, h: number) {
 function resetFish(fish: FishSchool, w: number, h: number, count: number) {
   for (let i = 0; i < count; i++) {
     initFishIndex(fish, i, w, h);
+  }
+
+  const heroCount = Math.min(count, OPENING_HERO_FISH.length);
+  for (let i = 0; i < heroCount; i++) {
+    const hero = OPENING_HERO_FISH[i]!;
+    fish.x[i] = hero.ux * w;
+    fish.y[i] = hero.uy * h;
+    fish.dir[i] = hero.dir;
+    fish.size[i] = hero.size;
+    fish.speed[i] = hero.speed;
+    fish.depth[i] = hero.depth;
+    fish.paletteId[i] = hero.paletteId % FISH_PALETTES.length;
+    fish.bobPhase[i] = i * 0.78;
+    fish.vxOff[i] = 0;
+    fish.vyOff[i] = 0;
+    fish.speedBoost[i] = 0;
   }
 }
 
@@ -860,6 +902,7 @@ function drawUnderwaterBackground(
   ambience: AquariumAmbience,
   timeSec: number,
   sim: AquariumCanvasSimulation,
+  openingPrimaryT: number,
 ) {
   const cache = ensureAquariumPaintCache(ctx, width, height, ambience, sim);
 
@@ -868,6 +911,46 @@ function drawUnderwaterBackground(
 
   ctx.fillStyle = cache.glowGrad;
   ctx.fillRect(0, 0, width, height);
+
+  // Early frames get a stronger top-light + edge vignette so the first impression reads as deliberate.
+  ctx.save();
+  const openingBoost = 1.1 - openingPrimaryT * 0.35;
+  const light = ctx.createRadialGradient(
+    width * 0.5,
+    height * 0.08,
+    width * 0.02,
+    width * 0.5,
+    height * 0.08,
+    width * 0.78,
+  );
+  if (ambience === "day") {
+    light.addColorStop(0, "rgba(255, 255, 255, 0.26)");
+    light.addColorStop(0.5, "rgba(225, 246, 255, 0.1)");
+    light.addColorStop(1, "rgba(200, 230, 255, 0)");
+  } else {
+    light.addColorStop(0, "rgba(158, 214, 255, 0.22)");
+    light.addColorStop(0.56, "rgba(58, 128, 180, 0.08)");
+    light.addColorStop(1, "rgba(20, 38, 70, 0)");
+  }
+  ctx.globalAlpha = openingBoost;
+  ctx.fillStyle = light;
+  ctx.fillRect(0, 0, width, height);
+
+  const vignette = ctx.createRadialGradient(
+    width * 0.5,
+    height * 0.46,
+    Math.min(width, height) * 0.14,
+    width * 0.5,
+    height * 0.5,
+    Math.max(width, height) * 0.86,
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(0.72, "rgba(0, 0, 0, 0.07)");
+  vignette.addColorStop(1, ambience === "day" ? "rgba(5, 20, 30, 0.2)" : "rgba(0, 0, 0, 0.3)");
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
 
   if (ambience === "day") {
     drawDayLightRays(
@@ -1057,6 +1140,7 @@ function drawAquariumPoetry(
   h: number,
   ambience: AquariumAmbience,
   fontFamily: string,
+  detailsAlpha: number,
 ) {
   const cx = w * 0.5;
   const title = "Virtual Fishtank";
@@ -1074,10 +1158,10 @@ function drawAquariumPoetry(
   const night = ambience === "night";
   const titleFill = night
     ? "rgba(255, 250, 245, 0.54)"
-    : "rgba(28, 55, 72, 0.5)";
+    : "rgba(18, 50, 70, 0.72)";
   const lineFill = night
     ? "rgba(220, 240, 255, 0.44)"
-    : "rgba(32, 72, 88, 0.46)";
+    : "rgba(26, 68, 86, 0.58)";
   const glow = night
     ? "rgba(160, 220, 255, 0.32)"
     : "rgba(255, 255, 255, 0.5)";
@@ -1087,10 +1171,14 @@ function drawAquariumPoetry(
   ctx.font = `600 ${titleSize}px ${fontFamily}`;
   ctx.shadowColor = glow;
   ctx.shadowBlur = night ? 28 : 18;
+  ctx.lineWidth = Math.max(1.2, titleSize * 0.03);
+  ctx.strokeStyle = night ? "rgba(5, 10, 20, 0.45)" : "rgba(255, 255, 255, 0.56)";
+  ctx.strokeText(title, cx, y);
   ctx.fillStyle = titleFill;
   ctx.fillText(title, cx, y);
 
   y += titleSize * 1.05;
+  ctx.globalAlpha *= detailsAlpha;
   ctx.shadowBlur = night ? 14 : 10;
   ctx.font = `400 ${lineSize}px ${fontFamily}`;
   ctx.fillStyle = lineFill;
@@ -1411,27 +1499,60 @@ function AquariumCanvasComponent({
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
-      const isStartupPhase = now - effectStartMs < STARTUP_PHASE_IN_MS;
+      const openingElapsedMs = Math.max(0, now - effectStartMs);
+      const openingPrimaryT = easeOutCubic(openingElapsedMs / OPENING_PRIMARY_MS);
+      const secondaryT = easeOutCubic(
+        (openingElapsedMs - SECONDARY_FADE_DELAY_MS) / SECONDARY_FADE_IN_MS,
+      );
+      const heroFishCount = Math.min(4, n);
+      const fishVisibleCount = openingElapsedMs < OPENING_PRIMARY_MS ? heroFishCount : n;
 
-      drawUnderwaterBackground(ctx, cssW, cssH, ambienceNow, timeSec, sim);
+      drawUnderwaterBackground(
+        ctx,
+        cssW,
+        cssH,
+        ambienceNow,
+        timeSec,
+        sim,
+        openingPrimaryT,
+      );
+      ctx.save();
+      ctx.globalAlpha = 0.22 + secondaryT * 0.78;
       drawDistantReef(ctx, cssW, cssH);
       drawDriftParticles(ctx, buf, ambienceNow);
+      ctx.restore();
       const fam = poemFontFamilyRef.current;
-      if (!isStartupPhase && fam && poemFontReadyRef.current) {
-        drawAquariumPoetry(ctx, cssW, cssH, ambienceNow, fam);
+      if ((fam && poemFontReadyRef.current) || !fam) {
+        drawAquariumPoetry(
+          ctx,
+          cssW,
+          cssH,
+          ambienceNow,
+          fam ?? "ui-serif, Georgia, serif",
+          secondaryT,
+        );
       }
-      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK, n, cssW);
-      if (!isStartupPhase) {
+      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_BACK, fishVisibleCount, cssW);
+      if (secondaryT > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = secondaryT;
         drawMidgroundRocksAndPlants(ctx, cssW, cssH, timeSec);
+        ctx.restore();
       }
-      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_MID, n, cssW);
-      if (!isStartupPhase) {
+      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_MID, fishVisibleCount, cssW);
+      if (secondaryT > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = secondaryT;
         drawForegroundSeaweed(ctx, cssW, cssH, timeSec);
+        ctx.restore();
       }
-      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_FRONT, n, cssW);
-      drawBubbles(ctx, buf, timeSec, cssW, cssH);
-      if (!isStartupPhase) {
+      drawFishSchool(ctx, fish, timeSec, FISH_DEPTH_FRONT, fishVisibleCount, cssW);
+      if (secondaryT > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = secondaryT;
+        drawBubbles(ctx, buf, timeSec, cssW, cssH);
         drawPointerBubbles(ctx, pointerBubbles, timeSec, cssW, cssH);
+        ctx.restore();
       }
 
       rafId = requestAnimationFrame(tick);
