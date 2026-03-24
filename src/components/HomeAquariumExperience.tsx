@@ -30,11 +30,8 @@ export default function HomeAquariumExperience() {
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
   const [sceneVisible, setSceneVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [poetryLayout, setPoetryLayout] = useState<PoetryLayout | null>(() =>
-    typeof window !== "undefined"
-      ? getAquariumPoetryLayout(window.innerWidth, window.innerHeight)
-      : null,
-  );
+  // Must start null on server and client so the first paint matches (avoids hydration mismatch).
+  const [poetryLayout, setPoetryLayout] = useState<PoetryLayout | null>(null);
 
   const tankMeasureRef = useRef<HTMLDivElement>(null);
 
@@ -89,12 +86,6 @@ export default function HomeAquariumExperience() {
     return () => ro.disconnect();
   }, []);
 
-  const pl =
-    poetryLayout ??
-    (typeof window !== "undefined"
-      ? getAquariumPoetryLayout(window.innerWidth, window.innerHeight)
-      : null);
-
   return (
     <div
       className={
@@ -110,10 +101,10 @@ export default function HomeAquariumExperience() {
 
       <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
         {/* DOM text for LCP; placement matches getAquariumPoetryLayout / canvas. */}
-        {pl ? (
+        {poetryLayout ? (
           <div
             className="pointer-events-none absolute inset-0 z-0 flex justify-center"
-            style={{ paddingTop: pl.paddingTop }}
+            style={{ paddingTop: poetryLayout.paddingTop }}
             aria-hidden
           >
             <div
@@ -122,8 +113,8 @@ export default function HomeAquariumExperience() {
               <p
                 className="m-0 font-semibold"
                 style={{
-                  fontSize: pl.titleSize,
-                  lineHeight: `${pl.titleLineHeight}px`,
+                  fontSize: poetryLayout.titleSize,
+                  lineHeight: `${poetryLayout.titleLineHeight}px`,
                   color: isNight
                     ? "rgba(255, 250, 245, 0.54)"
                     : "rgba(18, 50, 70, 0.72)",
@@ -133,15 +124,15 @@ export default function HomeAquariumExperience() {
               </p>
               <div
                 className="m-0"
-                style={{ marginTop: pl.taglinesMarginTop }}
+                style={{ marginTop: poetryLayout.taglinesMarginTop }}
               >
                 {AQUARIUM_POEM_TAGLINES.map((line) => (
                   <p
                     key={line}
                     className="m-0 font-normal"
                     style={{
-                      fontSize: pl.lineSize,
-                      lineHeight: `${pl.lineHeight}px`,
+                      fontSize: poetryLayout.lineSize,
+                      lineHeight: `${poetryLayout.lineHeight}px`,
                       color: isNight
                         ? "rgba(220, 240, 255, 0.44)"
                         : "rgba(26, 68, 86, 0.58)",
