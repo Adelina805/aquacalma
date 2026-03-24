@@ -2,10 +2,12 @@
 
 import { Dancing_Script } from "next/font/google";
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import FloatingControlPanel from "@/src/components/FloatingControlPanel";
 import {
+  AQUARIUM_POEM_TAGLINES,
   DEFAULT_FISH_COUNT,
+  getAquariumPoetryLayout,
   MAX_FISH_COUNT,
   type AquariumRuntimeSettings,
 } from "@/src/lib/aquarium-runtime";
@@ -20,12 +22,21 @@ const poemFont = Dancing_Script({
   weight: ["400", "600"],
 });
 
+type PoetryLayout = ReturnType<typeof getAquariumPoetryLayout>;
+
 export default function HomeAquariumExperience() {
   // Keep initial SSR/CSR markup identical; hydrate preference after mount.
   const [isNight, setIsNight] = useState(true);
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
   const [sceneVisible, setSceneVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [poetryLayout, setPoetryLayout] = useState<PoetryLayout | null>(() =>
+    typeof window !== "undefined"
+      ? getAquariumPoetryLayout(window.innerWidth, window.innerHeight)
+      : null,
+  );
+
+  const tankMeasureRef = useRef<HTMLDivElement>(null);
 
   const runtimeSettingsRef = useRef<AquariumRuntimeSettings>({
     ambience: "night",
@@ -65,6 +76,25 @@ export default function HomeAquariumExperience() {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    const el = tankMeasureRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setPoetryLayout(getAquariumPoetryLayout(r.width, r.height));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const pl =
+    poetryLayout ??
+    (typeof window !== "undefined"
+      ? getAquariumPoetryLayout(window.innerWidth, window.innerHeight)
+      : null);
+
   return (
     <div
       className={
@@ -78,15 +108,63 @@ export default function HomeAquariumExperience() {
         and gentle taps, comfortable on phones and desktops.
       </h1>
 
-      <div
-        className={`absolute inset-0 z-0 min-h-0 transition-opacity duration-1400 ease-out ${
-          sceneVisible ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        <AquariumCanvas
-          runtimeSettingsRef={runtimeSettingsRef}
-          poemFontFamily={poemFont.style.fontFamily}
-        />
+      <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
+        {/* DOM text for LCP; placement matches getAquariumPoetryLayout / canvas. */}
+        {pl ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-0 flex justify-center"
+            style={{ paddingTop: pl.paddingTop }}
+            aria-hidden
+          >
+            <div
+              className={`w-full text-center ${poemFont.className}`}
+            >
+              <p
+                className="m-0 font-semibold"
+                style={{
+                  fontSize: pl.titleSize,
+                  lineHeight: `${pl.titleLineHeight}px`,
+                  color: isNight
+                    ? "rgba(255, 250, 245, 0.54)"
+                    : "rgba(18, 50, 70, 0.72)",
+                }}
+              >
+                Virtual Fishtank
+              </p>
+              <div
+                className="m-0"
+                style={{ marginTop: pl.taglinesMarginTop }}
+              >
+                {AQUARIUM_POEM_TAGLINES.map((line) => (
+                  <p
+                    key={line}
+                    className="m-0 font-normal"
+                    style={{
+                      fontSize: pl.lineSize,
+                      lineHeight: `${pl.lineHeight}px`,
+                      color: isNight
+                        ? "rgba(220, 240, 255, 0.44)"
+                        : "rgba(26, 68, 86, 0.58)",
+                    }}
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className={`relative z-10 flex h-full min-h-0 flex-col transition-opacity duration-1400 ease-out ${
+            sceneVisible ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <AquariumCanvas
+            runtimeSettingsRef={runtimeSettingsRef}
+            poemFontFamily={poemFont.style.fontFamily}
+          />
+        </div>
       </div>
 
       <aside

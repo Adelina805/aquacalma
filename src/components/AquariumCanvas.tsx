@@ -7,7 +7,9 @@ import {
   type MutableRefObject,
 } from "react";
 import {
+  AQUARIUM_POEM_TAGLINES,
   DEFAULT_FISH_COUNT,
+  getAquariumPoetryLayout,
   MAX_FISH_COUNT,
   type AquariumAmbience,
   type AquariumRuntimeSettings,
@@ -154,12 +156,6 @@ function nextRandomTurnTimerSec() {
 
 /** Hoisted: avoid allocating each `stepFish` call (once per frame). */
 const FISH_DEPTH_REACT: readonly number[] = [0.88, 1.12, 1.38];
-
-const AQUARIUM_POEM_TAGLINES: readonly string[] = [
-  "A soothing, interactive aquarium",
-  "with calm motion, gentle taps,",
-  "and a quiet home on palm or desk.",
-];
 
 type NightBiolumSpot = {
   ux: number;
@@ -1243,17 +1239,10 @@ function drawAquariumPoetry(
 ) {
   const cx = w * 0.5;
   const title = "Virtual Fishtank";
-  const isMobile = w < 640;
-  const titleSize = isMobile
-    ? Math.max(32, Math.min(60, w * 0.105))
-    : Math.max(26, Math.min(56, w * 0.09));
-  const lineSize = isMobile
-    ? Math.max(18, Math.min(30, w * 0.05))
-    : Math.max(15, Math.min(26, w * 0.042));
-  const lineHeight = lineSize * 1.42;
-  const blockHalfHeight =
-    (titleSize * 1.1 + AQUARIUM_POEM_TAGLINES.length * lineHeight) * 0.5;
-  const cy = h * 0.24;
+  const { titleSize, lineSize, lineHeight, yTitle } = getAquariumPoetryLayout(
+    w,
+    h,
+  );
 
   ctx.save();
   ctx.textAlign = "center";
@@ -1270,7 +1259,7 @@ function drawAquariumPoetry(
     ? "rgba(160, 220, 255, 0.32)"
     : "rgba(255, 255, 255, 0.5)";
 
-  let y = cy - blockHalfHeight + titleSize * 0.45;
+  let y = yTitle;
 
   ctx.font = `600 ${titleSize}px ${fontFamily}`;
   ctx.shadowColor = glow;
