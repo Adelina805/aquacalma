@@ -39,6 +39,7 @@ const MAX_FOOD_PELLETS = 20;
 const FOOD_LIFETIME_MS = 5000;
 const FOOD_DETECTION_RADIUS = 250;
 const FOOD_EAT_RADIUS = 5;
+const FOOD_ARRIVE_RADIUS = 24;
 // Speeds are in CSS px/s (dt is seconds).
 const FOOD_FALL_SPEED_MIN = 34;
 const FOOD_FALL_SPEED_MAX = 62;
@@ -317,7 +318,10 @@ function stepFish(
   const turnCooldownSec = 0.34;
   const directFleeRadius = 34;
   const detectRSq = FOOD_DETECTION_RADIUS * FOOD_DETECTION_RADIUS;
-  const eatRSq = FOOD_EAT_RADIUS * FOOD_EAT_RADIUS;
+  const arriveRSq = FOOD_ARRIVE_RADIUS * FOOD_ARRIVE_RADIUS;
+  const foodSeekMagFar = 44;
+  const foodSeekMagNear = 14;
+  const minFacingSpeed = 1.5;
 
   // Same for every fish this frame — hoisted out of the loop.
   const followRate = Math.min(1, 6 * dt);
@@ -332,6 +336,7 @@ function stepFish(
   for (let i = 0; i < count; i++) {
     let targetVx = 0;
     let targetVy = 0;
+    let targetPelletForEat: FoodPellet | null = null;
 
     // Food seek: lightweight, bounded scan (<= MAX_FOOD_PELLETS).
     if (food.length > 0) {
@@ -382,19 +387,17 @@ function stepFish(
         if (dx > halfW) dx -= w;
         else if (dx < -halfW) dx += w;
         const distSq = dx * dx + dy * dy;
-        if (distSq <= eatRSq) {
-          targetPellet.active = false;
-          targetPellet.claimedBy = -1;
-          fish.targetFoodId[i] = -1;
-          fish.foodState[i] = 0;
-        } else if (distSq <= detectRSq) {
+        if (distSq <= detectRSq) {
           const dist = Math.sqrt(Math.max(1e-6, distSq));
           const nx = dx / dist;
           const ny = dy / dist;
-          const mag = 44;
+          const arriveT =
+            distSq < arriveRSq ? Math.max(0, Math.min(1, dist / FOOD_ARRIVE_RADIUS)) : 1;
+          const mag = foodSeekMagNear + (foodSeekMagFar - foodSeekMagNear) * arriveT;
           targetVx += nx * mag;
           targetVy += ny * mag;
           fish.speedBoost[i] = Math.min(maxSpeedBoost, fish.speedBoost[i] + 0.6 * dt);
+          targetPelletForEat = targetPellet;
         }
       }
     }
@@ -464,7 +467,11 @@ function stepFish(
     fish.turnTimer[i] -= dt;
     if (fish.turnTimer[i] <= 0) {
       fish.turnTimer[i] = nextRandomTurnTimerSec();
-      if (Math.random() < randomTurnChance && fish.turnCooldown[i] <= 0) {
+      if (
+        fish.foodState[i] === 0 &&
+        Math.random() < randomTurnChance &&
+        fish.turnCooldown[i] <= 0
+      ) {
         fish.dir[i] *= -1;
         fish.turnCooldown[i] = turnCooldownSec;
         fish.speedBoost[i] = Math.min(maxSpeedBoost, fish.speedBoost[i] + 0.14);
@@ -486,6 +493,32 @@ function stepFish(
     fish.x[i] += vx * dt;
     fish.y[i] += fish.vyOff[i] * dt;
     fish.y[i] = Math.min(bottom, Math.max(top, fish.y[i]));
+    if (vx > minFacingSpeed) fish.dir[i] = 1;
+    else if (vx < -minFacingSpeed) fish.dir[i] = -1;
+
+    if (targetPelletForEat && targetPelletForEat.active) {
+      let dx = targetPelletForEat.x - fish.x[i];
+      const dy = targetPelletForEat.y - fish.y[i];
+      if (dx > halfW) dx -= w;
+      else if (dx < -halfW) dx += w;
+
+      const depthScale =
+        fish.depth[i] === FISH_DEPTH_BACK
+          ? 0.7
+          : fish.depth[i] === FISH_DEPTH_FRONT
+            ? 1.14
+            : 1;
+      const mouthOffsetX = fish.dir[i] * 22 * 0.32 * fish.size[i] * depthScale;
+      const mdx = dx - mouthOffsetX;
+      const eatR = Math.max(1.8, FOOD_EAT_RADIUS * 0.65 + targetPelletForEat.radius);
+      const eatRSq = eatR * eatR;
+      if (mdx * mdx + dy * dy <= eatRSq) {
+        targetPelletForEat.active = false;
+        targetPelletForEat.claimedBy = -1;
+        fish.targetFoodId[i] = -1;
+        fish.foodState[i] = 0;
+      }
+    }
 
     if (fish.x[i] < -margin) fish.x[i] += w + margin * 2;
     else if (fish.x[i] > w + margin) fish.x[i] -= w + margin * 2;
