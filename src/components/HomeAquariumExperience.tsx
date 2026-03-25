@@ -158,6 +158,24 @@ export default function HomeAquariumExperience() {
         </div>
       </div>
 
+      <a
+        href="https://github.com/Adelina805/virtual-fishtank"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`pointer-events-auto absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-20 text-base leading-none no-underline transition-[opacity,color] duration-700 ease-out sm:left-[max(1.75rem,env(safe-area-inset-left))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
+          sceneVisible ? "opacity-100" : "opacity-0"
+        } ${
+          isNight
+            ? "text-slate-400 hover:text-rose-500"
+            : "text-slate-400 hover:text-rose-500"
+        }`}
+        aria-label="Virtual Fishtank on GitHub"
+      >
+        <span aria-hidden className="select-none">
+          &#9829;
+        </span>
+      </a>
+
       <aside
         className={`pointer-events-none absolute inset-e-[max(1.25rem,env(safe-area-inset-right))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 w-max max-w-[min(100vw-2rem,20rem)] transition-[opacity,transform] duration-700 ease-out sm:inset-e-[max(1.75rem,env(safe-area-inset-right))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
           controlsVisible
