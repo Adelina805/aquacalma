@@ -38,7 +38,7 @@ type FoodPellet = {
 const MAX_FOOD_PELLETS = 20;
 const FOOD_LIFETIME_MS = 5000;
 const FOOD_DETECTION_RADIUS = 250;
-const FOOD_EAT_RADIUS = 10;
+const FOOD_EAT_RADIUS = 5;
 // Speeds are in CSS px/s (dt is seconds).
 const FOOD_FALL_SPEED_MIN = 34;
 const FOOD_FALL_SPEED_MAX = 62;
