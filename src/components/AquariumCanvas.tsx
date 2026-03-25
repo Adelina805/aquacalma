@@ -825,6 +825,85 @@ type AquariumPaintCache = {
   wakeVeilNightGrad: CanvasGradient;
 };
 
+/**
+ * After the opening poetry fade-in finishes, title + taglines are static — rasterizing once
+ * avoids repeated `strokeText` / `fillText` work every frame (hot path for main-thread time).
+ */
+type PoetryRasterCache = {
+  canvas: HTMLCanvasElement;
+  cssW: number;
+  cssH: number;
+  dpr: number;
+  ambience: AquariumAmbience;
+  fontKey: string;
+};
+
+function poetryRasterNeedsRebuild(
+  c: PoetryRasterCache | null,
+  cssW: number,
+  cssH: number,
+  dpr: number,
+  ambience: AquariumAmbience,
+  fontKey: string,
+) {
+  if (!c) return true;
+  return (
+    c.cssW !== cssW ||
+    c.cssH !== cssH ||
+    c.dpr !== dpr ||
+    c.ambience !== ambience ||
+    c.fontKey !== fontKey
+  );
+}
+
+function drawAquariumPoetryCached(
+  ctx: CanvasRenderingContext2D,
+  poetryHolder: { poetryRaster: PoetryRasterCache | null },
+  cssW: number,
+  cssH: number,
+  dpr: number,
+  ambience: AquariumAmbience,
+  fontFamily: string,
+  detailsAlpha: number,
+) {
+  const fontKey = fontFamily;
+  const canRasterize = detailsAlpha >= 0.999;
+  if (!canRasterize) {
+    poetryHolder.poetryRaster = null;
+    drawAquariumPoetry(ctx, cssW, cssH, ambience, fontKey, detailsAlpha);
+    return;
+  }
+
+  let cache = poetryHolder.poetryRaster;
+  if (poetryRasterNeedsRebuild(cache, cssW, cssH, dpr, ambience, fontKey)) {
+    const canvasEl = cache?.canvas ?? document.createElement("canvas");
+    const bw = Math.max(1, Math.round(cssW * dpr));
+    const bh = Math.max(1, Math.round(cssH * dpr));
+    canvasEl.width = bw;
+    canvasEl.height = bh;
+    const pctx = canvasEl.getContext("2d");
+    if (!pctx) {
+      drawAquariumPoetry(ctx, cssW, cssH, ambience, fontKey, detailsAlpha);
+      return;
+    }
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.clearRect(0, 0, bw, bh);
+    pctx.scale(dpr, dpr);
+    drawAquariumPoetry(pctx, cssW, cssH, ambience, fontKey, 1);
+    cache = {
+      canvas: canvasEl,
+      cssW,
+      cssH,
+      dpr,
+      ambience,
+      fontKey,
+    };
+    poetryHolder.poetryRaster = cache;
+  }
+
+  ctx.drawImage(cache!.canvas, 0, 0, cssW, cssH);
+}
+
 function ensureAquariumPaintCache(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1318,6 +1397,8 @@ type AquariumCanvasSimulation = {
   lastAppliedFishCount: number;
   /** Cleared when the backing store is resized so gradients stay valid for the context. */
   paint: AquariumPaintCache | null;
+  /** Raster cache for poetry text after opening reveal; cleared on resize / ambience / font. */
+  poetryRaster: PoetryRasterCache | null;
 };
 
 // In React dev, Strict Mode intentionally mounts/unmounts components to surface unsafe lifecycles.
@@ -1338,6 +1419,7 @@ function createAquariumSimulation(): AquariumCanvasSimulation {
     lastNow: 0,
     lastAppliedFishCount: 0,
     paint: null,
+    poetryRaster: null,
   };
 }
 
@@ -1420,6 +1502,7 @@ function AquariumCanvasComponent({
     sim.lastBackingH = -1;
     sim.lastNow = 0;
     sim.paint = null;
+    sim.poetryRaster = null;
 
     const { buf, fish, pointerBubbles, pointerSpawn } = sim;
     const effectStartMs = performance.now();
@@ -1499,6 +1582,22 @@ function AquariumCanvasComponent({
     canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("pointercancel", onPointerCancel);
 
+    const scheduleFrame = () => {
+      if (document.visibilityState === "hidden") {
+        rafId = 0;
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && rafId === 0) {
+        sim.lastNow = 0;
+        scheduleFrame();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     const tick = (now: number) => {
       const timeSec = now * 0.001;
       const cssW = Math.max(1, Math.round(canvas.clientWidth));
@@ -1527,6 +1626,7 @@ function AquariumCanvasComponent({
         sim.lastBackingW = backingW;
         sim.lastBackingH = backingH;
         sim.paint = null;
+        sim.poetryRaster = null;
       }
 
       const cssWDelta = Math.abs(cssW - sim.lastCssW);
@@ -1538,6 +1638,7 @@ function AquariumCanvasComponent({
       if (shouldResetForCssSize) {
         sim.lastCssW = cssW;
         sim.lastCssH = cssH;
+        sim.poetryRaster = null;
         resetParticlesAndBubbles(buf, cssW, cssH);
         clearPointerBubbles(pointerBubbles);
         resetFish(fish, cssW, cssH, n);
@@ -1598,10 +1699,12 @@ function AquariumCanvasComponent({
       ctx.restore();
       const fam = poemFontFamilyRef.current;
       if ((fam && poemFontReadyRef.current) || !fam) {
-        drawAquariumPoetry(
+        drawAquariumPoetryCached(
           ctx,
+          sim,
           cssW,
           cssH,
+          dpr,
           ambienceNow,
           fam ?? "ui-serif, Georgia, serif",
           poetryT,
@@ -1647,13 +1750,14 @@ function AquariumCanvasComponent({
         ctx.restore();
       }
 
-      rafId = requestAnimationFrame(tick);
+      scheduleFrame();
     };
 
-    rafId = requestAnimationFrame(tick);
+    scheduleFrame();
 
     return () => {
-      cancelAnimationFrame(rafId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerleave", onPointerLeave);
