@@ -72,7 +72,6 @@ function FishIcon({ className }: { className?: string }) {
 }
 
 function FishFoodIcon({ className }: { className?: string }) {
-  // Placeholder icon (replace with your final SVG later).
   return (
     <svg
       className={className}
@@ -84,11 +83,9 @@ function FishFoodIcon({ className }: { className?: string }) {
       strokeLinejoin="round"
       aria-hidden
     >
-      <path d="M6 15c2-1 3-2 3-4 0-2-1-3-3-4" />
-      <path d="M18 15c-2-1-3-2-3-4 0-2 1-3 3-4" />
-      <circle cx="12" cy="12" r="1.2" />
-      <circle cx="9.5" cy="17.2" r="1" />
-      <circle cx="14.5" cy="17.2" r="1" />
+      <path d="M18 11h-4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h4" />
+      <path d="M6 7v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" />
+      <rect width="16" height="5" x="4" y="2" rx="1" />
     </svg>
   );
 }
