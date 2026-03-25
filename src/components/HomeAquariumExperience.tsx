@@ -100,10 +100,10 @@ export default function HomeAquariumExperience() {
       </h1>
 
       <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
-        {/* Invisible DOM copy for LCP metrics (canvas is the real visuals). */}
+        {/* Near-invisible DOM copy for LCP (canvas is the real visuals). */}
         {poetryLayout ? (
           <div
-            className="pointer-events-none absolute inset-0 z-0 flex justify-center text-transparent select-none"
+            className="pointer-events-none absolute inset-0 z-0 flex justify-center opacity-[0.01] select-none"
             style={{ paddingTop: poetryLayout.paddingTop }}
             aria-hidden
           >
@@ -115,6 +115,9 @@ export default function HomeAquariumExperience() {
                 style={{
                   fontSize: poetryLayout.titleSize,
                   lineHeight: `${poetryLayout.titleLineHeight}px`,
+                  color: isNight
+                    ? "rgba(255, 250, 245, 0.54)"
+                    : "rgba(18, 50, 70, 0.72)",
                 }}
               >
                 Virtual Fishtank
@@ -130,6 +133,9 @@ export default function HomeAquariumExperience() {
                     style={{
                       fontSize: poetryLayout.lineSize,
                       lineHeight: `${poetryLayout.lineHeight}px`,
+                      color: isNight
+                        ? "rgba(220, 240, 255, 0.44)"
+                        : "rgba(26, 68, 86, 0.58)",
                     }}
                   >
                     {line}
