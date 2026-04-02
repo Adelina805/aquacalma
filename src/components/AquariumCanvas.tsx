@@ -37,13 +37,23 @@ type FoodPellet = {
 
 const MAX_FOOD_PELLETS = 20;
 const FOOD_LIFETIME_MS = 5000;
+/** Fish within this range get first pick of unclaimed pellets each frame. */
 const FOOD_DETECTION_RADIUS = 250;
 const FOOD_EAT_RADIUS = 5;
-const FOOD_ARRIVE_RADIUS = 24;
+const FOOD_ARRIVE_RADIUS = 28;
 // Speeds are in CSS px/s (dt is seconds).
 const FOOD_FALL_SPEED_MIN = 34;
 const FOOD_FALL_SPEED_MAX = 62;
 const FOOD_DRIFT_RANGE = 12;
+
+/** `fish.foodState` — keep numeric for typed arrays. */
+const FISH_FS_WANDER = 0;
+const FISH_FS_SEEK_FOOD = 1;
+const FISH_FS_EAT = 2;
+const FISH_FS_RESUME = 3;
+
+const FISH_EAT_HOLD_SEC = 0.11;
+const FISH_RESUME_BLEND_SEC = 0.22;
 
 function randBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -134,8 +144,13 @@ type FishSchool = {
   speedBoost: Float32Array;
   /** Active food pellet id, or -1 when not seeking. */
   targetFoodId: Int32Array;
-  /** 0 = normal, 1 = seeking food. */
+  /**
+   * FSM: 0 = wander, 1 = seek food, 2 = eat (brief), 3 = resume swim after eating.
+   * Seek uses full 2D steering; wander keeps horizontal cruise + bob.
+   */
   foodState: Uint8Array;
+  /** Seconds remaining in Eat / Resume states. */
+  foodPhaseTimer: Float32Array;
   /** Which compositing pass this fish belongs to (layered depth). */
   depth: Uint8Array;
   /** Index into `FISH_PALETTES` — dorsal / mid / belly / fin for each fish. */
@@ -175,6 +190,7 @@ function createFishSchool(capacity: number): FishSchool {
     speedBoost: new Float32Array(capacity),
     targetFoodId: new Int32Array(capacity),
     foodState: new Uint8Array(capacity),
+    foodPhaseTimer: new Float32Array(capacity),
     depth: new Uint8Array(capacity),
     paletteId: new Uint8Array(capacity),
     turnTimer: new Float32Array(capacity),
@@ -248,7 +264,8 @@ function initFishIndex(fish: FishSchool, i: number, w: number, h: number) {
   fish.vyOff[i] = 0;
   fish.speedBoost[i] = 0;
   fish.targetFoodId[i] = -1;
-  fish.foodState[i] = 0;
+  fish.foodState[i] = FISH_FS_WANDER;
+  fish.foodPhaseTimer[i] = 0;
   fish.depth[i] = FISH_DEPTH_CYCLE[i % FISH_DEPTH_CYCLE.length]!;
   fish.paletteId[i] = (Math.random() * nPalettes) | 0;
   fish.turnTimer[i] = nextRandomTurnTimerSec();
@@ -287,13 +304,168 @@ function resetFish(fish: FishSchool, w: number, h: number, count: number) {
     fish.vyOff[i] = 0;
     fish.speedBoost[i] = 0;
     fish.targetFoodId[i] = -1;
-    fish.foodState[i] = 0;
+    fish.foodState[i] = FISH_FS_WANDER;
+    fish.foodPhaseTimer[i] = 0;
     fish.turnTimer[i] = nextRandomTurnTimerSec();
     fish.turnCooldown[i] = 0;
   }
 }
 
-/** Nearby fish gently bias toward or away from the pointer; offsets are low-pass filtered (no snapping). */
+function wrapDeltaX(ax: number, bx: number, w: number): number {
+  const halfW = w * 0.5;
+  let dx = bx - ax;
+  if (dx > halfW) dx -= w;
+  else if (dx < -halfW) dx += w;
+  return dx;
+}
+
+function fishPelletDistSq(
+  fx: number,
+  fy: number,
+  pellet: FoodPellet,
+  w: number,
+): number {
+  const dx = wrapDeltaX(fx, pellet.x, w);
+  const dy = pellet.y - fy;
+  return dx * dx + dy * dy;
+}
+
+/**
+ * Deterministic two-pass assignment: nearby fish claim first; any leftover pellet goes to the
+ * globally nearest fish (may switch a closer pellet). O(fish × pellets) — fine for ≤100×20.
+ */
+function assignFoodClaims(
+  fish: FishSchool,
+  food: FoodPellet[],
+  count: number,
+  w: number,
+  detectRSq: number,
+): void {
+  if (food.length === 0 || count === 0) return;
+
+  for (let k = 0; k < food.length; k++) {
+    const p = food[k]!;
+    if (p.active) p.claimedBy = -1;
+  }
+
+  for (let i = 0; i < count; i++) {
+    if (fish.foodState[i] === FISH_FS_EAT) continue;
+    fish.targetFoodId[i] = -1;
+  }
+
+  // Pass 1 — in-range fish (index order) pick nearest unclaimed pellet.
+  for (let i = 0; i < count; i++) {
+    if (fish.foodState[i] === FISH_FS_EAT) continue;
+    let best: FoodPellet | null = null;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    for (let k = 0; k < food.length; k++) {
+      const p = food[k]!;
+      if (!p.active || p.claimedBy !== -1) continue;
+      const d2 = fishPelletDistSq(fish.x[i]!, fish.y[i]!, p, w);
+      if (d2 > detectRSq) continue;
+      if (
+        !best ||
+        d2 < bestD2 ||
+        (d2 === bestD2 && p.id < best.id)
+      ) {
+        bestD2 = d2;
+        best = p;
+      }
+    }
+    if (best) {
+      best.claimedBy = i;
+      fish.targetFoodId[i] = best.id;
+      fish.foodState[i] = FISH_FS_SEEK_FOOD;
+    }
+  }
+
+  // Pass 2 — remaining pellets: nearest fish; steal only if strictly closer (id tie-break).
+  for (let k = 0; k < food.length; k++) {
+    const p = food[k]!;
+    if (!p.active || p.claimedBy !== -1) continue;
+
+    let bestFish = -1;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < count; i++) {
+      if (fish.foodState[i] === FISH_FS_EAT) continue;
+      const d2 = fishPelletDistSq(fish.x[i]!, fish.y[i]!, p, w);
+      if (d2 < bestD2 || (d2 === bestD2 && (bestFish < 0 || i < bestFish))) {
+        bestD2 = d2;
+        bestFish = i;
+      }
+    }
+    if (bestFish < 0) continue;
+
+    const curId = fish.targetFoodId[bestFish];
+    if (curId < 0) {
+      p.claimedBy = bestFish;
+      fish.targetFoodId[bestFish] = p.id;
+      fish.foodState[bestFish] = FISH_FS_SEEK_FOOD;
+      continue;
+    }
+
+    let curPellet: FoodPellet | null = null;
+    for (let u = 0; u < food.length; u++) {
+      const c = food[u]!;
+      if (c.active && c.id === curId) {
+        curPellet = c;
+        break;
+      }
+    }
+    if (!curPellet) {
+      p.claimedBy = bestFish;
+      fish.targetFoodId[bestFish] = p.id;
+      fish.foodState[bestFish] = FISH_FS_SEEK_FOOD;
+      continue;
+    }
+
+    const dOld = fishPelletDistSq(fish.x[bestFish]!, fish.y[bestFish]!, curPellet, w);
+    if (bestD2 < dOld || (bestD2 === dOld && p.id < curPellet.id)) {
+      if (curPellet.claimedBy === bestFish) curPellet.claimedBy = -1;
+      p.claimedBy = bestFish;
+      fish.targetFoodId[bestFish] = p.id;
+      fish.foodState[bestFish] = FISH_FS_SEEK_FOOD;
+    }
+  }
+
+  for (let i = 0; i < count; i++) {
+    if (fish.foodState[i] === FISH_FS_EAT) continue;
+    const tid = fish.targetFoodId[i];
+    if (tid < 0) {
+      if (
+        fish.foodState[i] === FISH_FS_SEEK_FOOD ||
+        fish.foodState[i] === FISH_FS_RESUME
+      ) {
+        if (
+          fish.foodState[i] !== FISH_FS_RESUME ||
+          fish.foodPhaseTimer[i] <= 0
+        ) {
+          fish.foodState[i] = FISH_FS_WANDER;
+        }
+      }
+      continue;
+    }
+    let valid = false;
+    for (let k = 0; k < food.length; k++) {
+      const p = food[k]!;
+      if (p.active && p.id === tid && p.claimedBy === i) {
+        valid = true;
+        break;
+      }
+    }
+    if (!valid) {
+      fish.targetFoodId[i] = -1;
+      if (
+        fish.foodState[i] !== FISH_FS_RESUME ||
+        fish.foodPhaseTimer[i] <= 0
+      ) {
+        fish.foodState[i] = FISH_FS_WANDER;
+      }
+    }
+  }
+}
+
+/** Nearby fish gently bias toward or away from the pointer; food uses steering + FSM. */
 function stepFish(
   fish: FishSchool,
   w: number,
@@ -319,88 +491,85 @@ function stepFish(
   const directFleeRadius = 34;
   const detectRSq = FOOD_DETECTION_RADIUS * FOOD_DETECTION_RADIUS;
   const arriveRSq = FOOD_ARRIVE_RADIUS * FOOD_ARRIVE_RADIUS;
-  const foodSeekMagFar = 44;
-  const foodSeekMagNear = 14;
-  const minFacingSpeed = 1.5;
+  /** Extra pursuit speed multiplier while seeking (full 2D). */
+    const foodSeekSpeedMul = 1.22;
+    const minFacingSpeed = 1.5;
 
-  // Same for every fish this frame — hoisted out of the loop.
-  const followRate = Math.min(1, 6 * dt);
-  const decay = pointer.inCanvas ? 1 : Math.max(0, 1 - 1.9 * dt);
-  const halfW = w * 0.5;
-  const influenceRSq = influenceR * influenceR;
-  /** Skip pointer math when the cursor is outside the tank. */
-  const pointerActive = pointer.inCanvas && influenceR > 1;
-  /** Avoid divide-by-zero if the tank is very small (influence radius can shrink below `personal`). */
-  const influenceSpan = Math.max(1e-3, influenceR - personal);
-
-  for (let i = 0; i < count; i++) {
-    let targetVx = 0;
-    let targetVy = 0;
-    let targetPelletForEat: FoodPellet | null = null;
-
-    // Food seek: lightweight, bounded scan (<= MAX_FOOD_PELLETS).
-    if (food.length > 0) {
-      let targetPellet: FoodPellet | null = null;
-      const existingId = fish.targetFoodId[i];
-      if (existingId >= 0) {
-        for (let k = 0; k < food.length; k++) {
-          const p = food[k]!;
-          if (p.active && p.id === existingId) {
-            targetPellet = p;
-            break;
-          }
-        }
-        if (!targetPellet) {
-          fish.targetFoodId[i] = -1;
-          fish.foodState[i] = 0;
-        }
-      }
-
-      if (!targetPellet) {
-        let best: FoodPellet | null = null;
-        let bestDistSq = detectRSq;
-        for (let k = 0; k < food.length; k++) {
-          const p = food[k]!;
-          if (!p.active) continue;
-          if (p.claimedBy !== -1 && p.claimedBy !== i) continue;
-          let dx = p.x - fish.x[i];
-          const dy = p.y - fish.y[i];
-          if (dx > halfW) dx -= w;
-          else if (dx < -halfW) dx += w;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < bestDistSq) {
-            bestDistSq = d2;
-            best = p;
-          }
-        }
-        if (best) {
-          best.claimedBy = i;
-          fish.targetFoodId[i] = best.id;
-          fish.foodState[i] = 1;
-          targetPellet = best;
-        }
-      }
-
-      if (targetPellet) {
-        let dx = targetPellet.x - fish.x[i];
-        const dy = targetPellet.y - fish.y[i];
-        if (dx > halfW) dx -= w;
-        else if (dx < -halfW) dx += w;
-        const distSq = dx * dx + dy * dy;
-        if (distSq <= detectRSq) {
-          const dist = Math.sqrt(Math.max(1e-6, distSq));
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const arriveT =
-            distSq < arriveRSq ? Math.max(0, Math.min(1, dist / FOOD_ARRIVE_RADIUS)) : 1;
-          const mag = foodSeekMagNear + (foodSeekMagFar - foodSeekMagNear) * arriveT;
-          targetVx += nx * mag;
-          targetVy += ny * mag;
-          fish.speedBoost[i] = Math.min(maxSpeedBoost, fish.speedBoost[i] + 0.6 * dt);
-          targetPelletForEat = targetPellet;
+  if (food.length > 0) {
+    assignFoodClaims(fish, food, count, w, detectRSq);
+  } else {
+    for (let i = 0; i < count; i++) {
+      if (fish.foodState[i] !== FISH_FS_EAT) {
+        fish.targetFoodId[i] = -1;
+        if (
+          fish.foodState[i] !== FISH_FS_RESUME ||
+          fish.foodPhaseTimer[i] <= 0
+        ) {
+          fish.foodState[i] = FISH_FS_WANDER;
         }
       }
     }
+  }
+
+  const followRateWander = Math.min(1, 6 * dt);
+  const followRateSeek = Math.min(1, 14 * dt);
+  const decay = pointer.inCanvas ? 1 : Math.max(0, 1 - 1.9 * dt);
+  const halfW = w * 0.5;
+  const influenceRSq = influenceR * influenceR;
+  const pointerActive = pointer.inCanvas && influenceR > 1;
+  const influenceSpan = Math.max(1e-3, influenceR - personal);
+
+  for (let i = 0; i < count; i++) {
+    const st = fish.foodState[i]!;
+
+    if (st === FISH_FS_EAT) {
+      fish.foodPhaseTimer[i] -= dt;
+      fish.speedBoost[i] = Math.max(0, fish.speedBoost[i] - boostDecayPerSec * 2.2 * dt);
+      fish.vxOff[i] *= Math.max(0, 1 - 5.5 * dt);
+      fish.vyOff[i] *= Math.max(0, 1 - 5.5 * dt);
+      const swimMul = 1 + fish.speedBoost[i] * 0.35;
+      const vx = fish.speed[i] * swimMul * fish.dir[i] * 0.22;
+      fish.x[i] += vx * dt;
+      fish.y[i] = Math.min(bottom, Math.max(top, fish.y[i] + fish.vyOff[i] * 0.2 * dt));
+      if (fish.foodPhaseTimer[i] <= 0) {
+        fish.foodState[i] = FISH_FS_RESUME;
+        fish.foodPhaseTimer[i] = FISH_RESUME_BLEND_SEC;
+      }
+      if (fish.x[i] < -margin) fish.x[i] += w + margin * 2;
+      else if (fish.x[i] > w + margin) fish.x[i] -= w + margin * 2;
+      continue;
+    }
+
+    let targetPellet: FoodPellet | null = null;
+    const tid = fish.targetFoodId[i];
+    if (tid >= 0 && food.length > 0) {
+      for (let k = 0; k < food.length; k++) {
+        const p = food[k]!;
+        if (p.active && p.id === tid) {
+          targetPellet = p;
+          break;
+        }
+      }
+    }
+
+    const seeking =
+      st === FISH_FS_SEEK_FOOD && targetPellet !== null && targetPellet.active;
+    const resumeBlend =
+      st === FISH_FS_RESUME
+        ? Math.max(0, Math.min(1, fish.foodPhaseTimer[i] / FISH_RESUME_BLEND_SEC))
+        : 0;
+
+    if (st === FISH_FS_RESUME) {
+      fish.foodPhaseTimer[i] -= dt;
+      if (fish.foodPhaseTimer[i] <= 0) {
+        fish.foodState[i] = FISH_FS_WANDER;
+      }
+    }
+
+    let targetVx = 0;
+    let targetVy = 0;
+    let pointerVx = 0;
+    let pointerVy = 0;
 
     if (pointerActive) {
       let dx = pointer.x - fish.x[i];
@@ -409,7 +578,6 @@ function stepFish(
       else if (dx < -halfW) dx += w;
 
       const distSq = dx * dx + dy * dy;
-      // Match old logic: react only when 0.75 < dist < influenceR (use squares to skip sqrt).
       if (distSq > 0.5625 && distSq < influenceRSq) {
         const dist = Math.sqrt(distSq);
         const frontTurnRadius = Math.max(personal * 1.75, fish.size[i] * 46);
@@ -417,7 +585,6 @@ function stepFish(
         const pointerAhead = fish.dir[i] * dx > 0;
         const directOnTop = dist < directFleeRadius;
         if (directOnTop) {
-          // Cursor directly over fish: always flee from the pointer.
           fish.speedBoost[i] = Math.min(
             maxSpeedBoost,
             fish.speedBoost[i] + behindBoostPerSec * 1.25 * dt,
@@ -442,7 +609,6 @@ function stepFish(
         const nx = dx / dist;
         const ny = dy / dist;
         const edge = 1 - dist / influenceR;
-        // Softer than edge² so mid-range fish still steer clearly toward the pointer.
         const falloff = Math.pow(edge, 1.2);
         const dFac = FISH_DEPTH_REACT[fish.depth[i]!] ?? 1;
         let along: number;
@@ -458,17 +624,50 @@ function stepFish(
           along = follow * (1 - (dist - personal) / influenceSpan);
         }
         const mag = Math.min(maxSteer, 52 * falloff * along * dFac);
-        targetVx = nx * mag;
-        targetVy = ny * mag;
+        pointerVx = nx * mag;
+        pointerVy = ny * mag;
       }
     }
+
+    if (seeking && targetPellet) {
+      let dx = wrapDeltaX(fish.x[i]!, targetPellet.x, w);
+      const dy = targetPellet.y - fish.y[i]!;
+      const distSq = dx * dx + dy * dy;
+      const dist = Math.sqrt(Math.max(1e-6, distSq));
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const arriveT =
+        distSq < arriveRSq
+          ? Math.max(0, Math.min(1, dist / FOOD_ARRIVE_RADIUS))
+          : 1;
+      const baseSwim = fish.speed[i] * (1 + fish.speedBoost[i]) * foodSeekSpeedMul;
+      const desiredVx = nx * baseSwim * arriveT;
+      const desiredVy = ny * baseSwim * arriveT;
+
+      fish.speedBoost[i] = Math.min(maxSpeedBoost, fish.speedBoost[i] + 0.85 * dt);
+
+      const ptrW = 0.28;
+      targetVx = desiredVx + pointerVx * ptrW;
+      targetVy = desiredVy + pointerVy * ptrW;
+    } else {
+      targetVx = pointerVx;
+      targetVy = pointerVy;
+    }
+
+    const fr =
+      seeking ? followRateSeek : followRateWander * (1 - 0.55 * resumeBlend);
+    fish.vxOff[i] += (targetVx - fish.vxOff[i]) * fr;
+    fish.vyOff[i] += (targetVy - fish.vyOff[i]) * fr;
+
+    fish.vxOff[i] *= decay;
+    fish.vyOff[i] *= decay;
 
     fish.turnCooldown[i] = Math.max(0, fish.turnCooldown[i] - dt);
     fish.turnTimer[i] -= dt;
     if (fish.turnTimer[i] <= 0) {
       fish.turnTimer[i] = nextRandomTurnTimerSec();
       if (
-        fish.foodState[i] === 0 &&
+        !seeking &&
         Math.random() < randomTurnChance &&
         fish.turnCooldown[i] <= 0
       ) {
@@ -478,30 +677,30 @@ function stepFish(
       }
     }
 
-    fish.vxOff[i] += (targetVx - fish.vxOff[i]) * followRate;
-    fish.vyOff[i] += (targetVy - fish.vyOff[i]) * followRate;
-
-    fish.vxOff[i] *= decay;
-    fish.vyOff[i] *= decay;
-
-    fish.speedBoost[i] = Math.max(
-      0,
-      fish.speedBoost[i] - boostDecayPerSec * dt,
-    );
+    fish.speedBoost[i] = Math.max(0, fish.speedBoost[i] - boostDecayPerSec * dt);
     const swimMul = 1 + fish.speedBoost[i];
-    const vx = fish.speed[i] * swimMul * fish.dir[i] + fish.vxOff[i];
+    let vx: number;
+    let vy: number;
+    if (seeking) {
+      vx = fish.vxOff[i]!;
+      vy = fish.vyOff[i]!;
+    } else {
+      const wanderMul = 1 - 0.7 * resumeBlend;
+      vx = fish.speed[i] * swimMul * fish.dir[i] * wanderMul + fish.vxOff[i]!;
+      vy = fish.vyOff[i]!;
+    }
+
     fish.x[i] += vx * dt;
-    fish.y[i] += fish.vyOff[i] * dt;
+    fish.y[i] += vy * dt;
     fish.y[i] = Math.min(bottom, Math.max(top, fish.y[i]));
-    if (vx > minFacingSpeed) fish.dir[i] = 1;
-    else if (vx < -minFacingSpeed) fish.dir[i] = -1;
 
-    if (targetPelletForEat && targetPelletForEat.active) {
-      let dx = targetPelletForEat.x - fish.x[i];
-      const dy = targetPelletForEat.y - fish.y[i];
-      if (dx > halfW) dx -= w;
-      else if (dx < -halfW) dx += w;
+    const horizForFacing = seeking ? vx : fish.speed[i] * swimMul * fish.dir[i];
+    if (horizForFacing > minFacingSpeed) fish.dir[i] = 1;
+    else if (horizForFacing < -minFacingSpeed) fish.dir[i] = -1;
 
+    if (seeking && targetPellet && targetPellet.active) {
+      let dx = wrapDeltaX(fish.x[i]!, targetPellet.x, w);
+      const dy = targetPellet.y - fish.y[i]!;
       const depthScale =
         fish.depth[i] === FISH_DEPTH_BACK
           ? 0.7
@@ -510,13 +709,14 @@ function stepFish(
             : 1;
       const mouthOffsetX = fish.dir[i] * 22 * 0.32 * fish.size[i] * depthScale;
       const mdx = dx - mouthOffsetX;
-      const eatR = Math.max(1.8, FOOD_EAT_RADIUS * 0.65 + targetPelletForEat.radius);
+      const eatR = Math.max(2.2, FOOD_EAT_RADIUS * 0.85 + targetPellet.radius);
       const eatRSq = eatR * eatR;
       if (mdx * mdx + dy * dy <= eatRSq) {
-        targetPelletForEat.active = false;
-        targetPelletForEat.claimedBy = -1;
+        targetPellet.active = false;
+        targetPellet.claimedBy = -1;
         fish.targetFoodId[i] = -1;
-        fish.foodState[i] = 0;
+        fish.foodState[i] = FISH_FS_EAT;
+        fish.foodPhaseTimer[i] = FISH_EAT_HOLD_SEC;
       }
     }
 
