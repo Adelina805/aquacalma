@@ -45,15 +45,15 @@ const FOOD_DETECTION_RADIUS = 250;
  */
 const FOOD_SLOWING_RADIUS = 48;
 /**
- * Mouth–pellet contact distance (CSS px): snout tip to pellet center, after bob alignment.
- * Pellet `radius` is added so larger pellets are easier to “touch.”
+ * Radius of the mouth bite disc (CSS px), centered on the animated snout tip in world space.
+ * Final eat test is circle–circle vs the pellet: overlap iff dist(mouth, pelletCenter) ≤ FOOD_EAT_RADIUS + pellet.radius.
  */
 const FOOD_EAT_RADIUS = 5.2;
 /** Require this many consecutive frames of valid mouth overlap before consuming (kills 1-frame false positives). */
 const FOOD_BITE_CONFIRM_FRAMES = 2;
 
 /**
- * Draw snout bite circle + center (same geometry as `mouthPelletDistSq` / `stepFish`). Set to `false` when done debugging.
+ * Draw snout bite circle + center — uses `getFishMouthWorld` + `getBiteCenterDistanceThreshold`. Set to `false` when done debugging.
  */
 const DEBUG_SHOW_FISH_MOUTH_HITBOX = false;
 
@@ -372,10 +372,34 @@ function smoothstep01(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
-function fishMouthWorld(
+/** Vertical bob offset in CSS px — shared by `getFishMouthWorld` and `drawFishSchool`. */
+function getFishBobOffsetY(
   fish: FishSchool,
   i: number,
-  w: number,
+  timeSec: number,
+): number {
+  const bobHz = 0.78 + i * 0.085;
+  const bobAmp =
+    fish.depth[i] === FISH_DEPTH_BACK
+      ? 0.72
+      : fish.depth[i] === FISH_DEPTH_FRONT
+        ? 1.08
+        : 1;
+  return (
+    Math.sin(timeSec * bobHz + fish.bobPhase[i]!) *
+    (5 + fish.size[i]! * 9) *
+    bobAmp *
+    0.72
+  );
+}
+
+/**
+ * World-space mouth point (CSS px): snout tip after bob — same frame as `fish.x/y`, `fish.dir`, and pellet positions.
+ * Call only after fish horizontal wrap for the frame so this matches on-screen placement (no toroidal shortcut).
+ */
+function getFishMouthWorld(
+  fish: FishSchool,
+  i: number,
   timeSec: number,
 ): { mx: number; my: number } {
   const depthScale =
@@ -386,33 +410,48 @@ function fishMouthWorld(
         : 1;
   const snout = FISH_UNIT_SNOUT_X * fish.size[i] * depthScale;
   const mx = fish.x[i]! + fish.dir[i]! * snout;
-  const bobHz = 0.78 + i * 0.085;
-  const bobAmp =
-    fish.depth[i] === FISH_DEPTH_BACK
-      ? 0.72
-      : fish.depth[i] === FISH_DEPTH_FRONT
-        ? 1.08
-        : 1;
-  const bob =
-    Math.sin(timeSec * bobHz + fish.bobPhase[i]!) *
-    (5 + fish.size[i]! * 9) *
-    bobAmp *
-    0.72;
-  const my = fish.y[i]! + bob;
+  const my = fish.y[i]! + getFishBobOffsetY(fish, i, timeSec);
   return { mx, my };
 }
 
-function mouthPelletDistSq(
+/** Max center distance for bite: mouth circle FOOD_EAT_RADIUS + pellet circle `pellet.radius`. */
+function getBiteCenterDistanceThreshold(pellet: FoodPellet): number {
+  return FOOD_EAT_RADIUS + pellet.radius;
+}
+
+/** Single debug / UI radius drawn at the mouth = same value as the distance threshold (one combined disc). */
+function getMouthBiteDebugDiscRadiusPx(pellet: FoodPellet): number {
+  return getBiteCenterDistanceThreshold(pellet);
+}
+
+/**
+ * True circle–circle overlap in flat canvas space (pellet center vs mouth center; Euclidean dx/dy).
+ * Must use post-integration fish x/y after `wrapFishSchoolXInPlace` so geometry matches rendering.
+ */
+function mouthPelletBiteCirclesOverlap(
   fish: FishSchool,
   i: number,
   pellet: FoodPellet,
-  w: number,
   timeSec: number,
-): number {
-  const { mx, my } = fishMouthWorld(fish, i, w, timeSec);
-  const dx = wrapDeltaX(mx, pellet.x, w);
+): boolean {
+  const { mx, my } = getFishMouthWorld(fish, i, timeSec);
+  const dx = pellet.x - mx;
   const dy = pellet.y - my;
-  return dx * dx + dy * dy;
+  const distSq = dx * dx + dy * dy;
+  const maxD = getBiteCenterDistanceThreshold(pellet);
+  return distSq <= maxD * maxD;
+}
+
+function wrapFishSchoolXInPlace(
+  fish: FishSchool,
+  i: number,
+  w: number,
+  margin: number,
+): void {
+  let x = fish.x[i]!;
+  if (x < -margin) x += w + margin * 2;
+  else if (x > w + margin) x -= w + margin * 2;
+  fish.x[i] = x;
 }
 
 /**
@@ -550,7 +589,11 @@ function assignFoodClaims(
   }
 }
 
-/** Nearby fish gently bias toward or away from the pointer; food uses steering + FSM. */
+/**
+ * Nearby fish gently bias toward or away from the pointer; food uses steering + FSM.
+ * Per fish each frame: integrate → clamp Y → update facing → wrap X → (if seeking) bite overlap
+ * via `mouthPelletBiteCirclesOverlap` vs pellet position after `stepFood`.
+ */
 function stepFish(
   fish: FishSchool,
   w: number,
@@ -623,8 +666,7 @@ function stepFish(
         fish.foodState[i] = FISH_FS_RESUME;
         fish.foodPhaseTimer[i] = FISH_RESUME_BLEND_SEC;
       }
-      if (fish.x[i] < -margin) fish.x[i] += w + margin * 2;
-      else if (fish.x[i] > w + margin) fish.x[i] -= w + margin * 2;
+      wrapFishSchoolXInPlace(fish, i, w, margin);
       continue;
     }
 
@@ -823,11 +865,16 @@ function stepFish(
     if (horizForFacing > minFacingSpeed) fish.dir[i] = 1;
     else if (horizForFacing < -minFacingSpeed) fish.dir[i] = -1;
 
+    wrapFishSchoolXInPlace(fish, i, w, margin);
+
     if (seeking && targetPellet && targetPellet.active) {
-      const biteD2 = mouthPelletDistSq(fish, i, targetPellet, w, timeSec);
-      const eatR = FOOD_EAT_RADIUS + targetPellet.radius * 0.95;
-      const eatRSq = eatR * eatR;
-      if (biteD2 <= eatRSq) {
+      const overlapping = mouthPelletBiteCirclesOverlap(
+        fish,
+        i,
+        targetPellet,
+        timeSec,
+      );
+      if (overlapping) {
         const next = fish.foodBiteFrames[i]! + 1;
         if (next >= FOOD_BITE_CONFIRM_FRAMES) {
           targetPellet.active = false;
@@ -843,9 +890,6 @@ function stepFish(
         fish.foodBiteFrames[i] = 0;
       }
     }
-
-    if (fish.x[i] < -margin) fish.x[i] += w + margin * 2;
-    else if (fish.x[i] > w + margin) fish.x[i] -= w + margin * 2;
   }
 }
 
@@ -983,18 +1027,7 @@ function drawFishSchool(
     const x = fish.x[i];
     if (x < left || x > right) continue;
 
-    const bobHz = 0.78 + i * 0.085;
-    const bobAmp =
-      fish.depth[i] === FISH_DEPTH_BACK
-        ? 0.72
-        : fish.depth[i] === FISH_DEPTH_FRONT
-          ? 1.08
-          : 1;
-    const bob =
-      Math.sin(timeSec * bobHz + fish.bobPhase[i]) *
-      (5 + fish.size[i] * 9) *
-      bobAmp *
-      0.72;
+    const bob = getFishBobOffsetY(fish, i, timeSec);
     drawFish(
       ctx,
       x,
@@ -1028,14 +1061,14 @@ function drawFishMouthHitboxesDebug(
     const x = fish.x[i]!;
     if (x < left || x > right) continue;
 
-    const { mx, my } = fishMouthWorld(fish, i, tankWidth, timeSec);
+    const { mx, my } = getFishMouthWorld(fish, i, timeSec);
     let radius = FOOD_EAT_RADIUS;
     const tid = fish.targetFoodId[i]!;
     if (tid >= 0 && fish.foodState[i] === FISH_FS_SEEK_FOOD) {
       for (let k = 0; k < food.length; k++) {
         const p = food[k]!;
         if (p.active && p.id === tid) {
-          radius = FOOD_EAT_RADIUS + p.radius * 0.95;
+          radius = getMouthBiteDebugDiscRadiusPx(p);
           break;
         }
       }
@@ -2258,6 +2291,8 @@ function AquariumCanvasComponent({
       stepParticles(buf, cssW, cssH, dt);
       stepBubbles(buf, cssW, cssH, dt, timeSec);
       stepPointerBubbles(pointerBubbles, cssW, dt, timeSec);
+      // Feeding: pellets move first; then fish integrate; each fish wraps X before bite tests so
+      // `getFishMouthWorld` matches draw positions (flat canvas, not toroidal mouth distance).
       stepFood(dt, cssW, cssH, now);
       stepFish(
         fish,
