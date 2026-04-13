@@ -30,6 +30,13 @@ export function modeHudActionBtn(isNight: boolean): string {
     : "rounded-full border border-slate-900/12 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-900 transition-[background-color,color] duration-200 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60 disabled:pointer-events-none disabled:opacity-35";
 }
 
+/** Tiny icon control beside the focus duration label (low visual weight). */
+export function modeHudIconBtn(isNight: boolean): string {
+  return isNight
+    ? "inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/70 transition-[background-color,color] duration-200 hover:border-white/[0.12] hover:bg-white/[0.08] hover:text-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80 disabled:pointer-events-none disabled:opacity-35"
+    : "inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-slate-900/10 bg-white/40 text-slate-700 transition-[background-color,color] duration-200 hover:border-slate-900/20 hover:bg-white/75 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60 disabled:pointer-events-none disabled:opacity-35";
+}
+
 export function modeHudMutedText(isNight: boolean): string {
   return isNight ? "text-white/45" : "text-slate-600";
 }
