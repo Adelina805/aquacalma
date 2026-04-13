@@ -82,10 +82,10 @@ export default function AppShell({
       </div>
 
       <a
-        href="https://github.com/Adelina805/virtual-fishtank"
+        href="https://github.com/Adelina805/aquacalma"
         target="_blank"
         rel="noopener noreferrer"
-        className={`pointer-events-auto absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-20 text-base leading-none no-underline transition-[opacity,color] duration-700 ease-out sm:left-[max(1.75rem,env(safe-area-inset-left))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
+        className={`pointer-events-auto absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-50 cursor-pointer text-base leading-none no-underline transition-[opacity,color] duration-700 ease-out sm:left-[max(1.75rem,env(safe-area-inset-left))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
           sceneVisible ? "opacity-100" : "opacity-0"
         } ${
           isNight
