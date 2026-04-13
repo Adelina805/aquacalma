@@ -238,10 +238,22 @@ export function computeRelaxBreathFrame(
     phase = "inhale";
     phaseLocal01 = t / durations.inhaleMs;
     const e = easing.inhale(phaseLocal01);
-    // Inhale begins from a distinct inhale start state (no pickup blending).
-    ringScale = lerp(scale.inhaleStart, scale.inhalePeak, e);
-    ringOpacity = lerp(opacity.inhaleStart, opacity.inhalePeak, relaxBreathSmoothstep(phaseLocal01));
-    ringRadiusMult = lerp(radius.inhaleStart, radius.inhalePeak, relaxBreathSmootherstep(phaseLocal01));
+    // Blend from rest -> inhale over a short window to avoid a visible cycle-wrap jump.
+    const inhaleEntryBlend = relaxBreathSmoothstep(clamp01(phaseLocal01 / 0.38));
+    const inhaleScale = lerp(scale.inhaleStart, scale.inhalePeak, e);
+    const inhaleOpacity = lerp(
+      opacity.inhaleStart,
+      opacity.inhalePeak,
+      relaxBreathSmoothstep(phaseLocal01),
+    );
+    const inhaleRadius = lerp(
+      radius.inhaleStart,
+      radius.inhalePeak,
+      relaxBreathSmootherstep(phaseLocal01),
+    );
+    ringScale = lerp(scale.exhaleEnd, inhaleScale, inhaleEntryBlend);
+    ringOpacity = lerp(opacity.rest, inhaleOpacity, inhaleEntryBlend);
+    ringRadiusMult = lerp(radius.exhaleEnd, inhaleRadius, inhaleEntryBlend);
     drift01 = easeInOutGate01(phaseLocal01, 0.22, 0.18);
   } else if (t < durations.inhaleMs + durations.holdMs) {
     phase = "hold";
