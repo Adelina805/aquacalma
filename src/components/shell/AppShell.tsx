@@ -2,7 +2,9 @@
 
 import type { ReactNode } from "react";
 import ModeToggle from "@/src/components/mode/ModeToggle";
-import ModeOverlayStack from "@/src/components/modes/ModeOverlayStack";
+import FocusModeHud from "@/src/components/modes/FocusModeHud";
+import RelaxBreathingHud from "@/src/components/modes/RelaxBreathingHud";
+import { useAppMode } from "@/src/state/app-mode-context";
 
 export type AppShellProps = {
   isNight: boolean;
@@ -15,8 +17,8 @@ export type AppShellProps = {
 };
 
 /**
- * Composes the full-screen experience: tank (z-0), mode overlay stub (z-15),
- * chrome and controls above. Keeps feature areas separate for per-mode growth.
+ * Composes the full-screen experience: tank (z-0), light per-mode HUD, chrome
+ * and controls above. Keeps the canvas visually dominant.
  */
 export default function AppShell({
   isNight,
@@ -25,6 +27,8 @@ export default function AppShell({
   tankLayer,
   aquariumControls,
 }: AppShellProps) {
+  const { mode } = useAppMode();
+
   const rootBg = isNight
     ? "relative h-dvh w-full overflow-hidden bg-slate-950"
     : "relative h-dvh w-full overflow-hidden bg-linear-to-b from-sky-50/95 via-cyan-50/55 to-slate-100/90";
@@ -39,6 +43,25 @@ export default function AppShell({
 
       {tankLayer}
 
+      {(mode === "relax" || mode === "focus") && (
+        <div
+          className={`pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center px-2 transition-[opacity] duration-700 ease-out ${
+            sceneVisible ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <div
+            className={`pointer-events-auto flex w-full max-w-[min(100vw-1.5rem,28rem)] flex-col items-center gap-4 transition-transform duration-700 ease-out sm:max-w-none sm:gap-5 ${
+              sceneVisible ? "translate-y-0" : "translate-y-2"
+            }`}
+          >
+            {mode === "relax" ? (
+              <RelaxBreathingHud isNight={isNight} visible={sceneVisible} />
+            ) : null}
+            {mode === "focus" ? <FocusModeHud isNight={isNight} /> : null}
+          </div>
+        </div>
+      )}
+
       <div
         className={`pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[min(100vw-1.5rem,28rem)] -translate-x-1/2 px-2 transition-[opacity,transform] duration-700 ease-out sm:bottom-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-none ${
           sceneVisible ? "translate-y-0 opacity-100" : "translate-y-1.5 opacity-0"
@@ -47,14 +70,6 @@ export default function AppShell({
         <div className="pointer-events-auto mx-auto flex justify-center">
           <ModeToggle isNight={isNight} />
         </div>
-      </div>
-
-      <div
-        className={`pointer-events-none absolute top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))] z-15 max-w-[min(100vw-1.5rem,20rem)] transition-[opacity,transform] duration-700 ease-out sm:top-[max(1rem,env(safe-area-inset-top))] sm:left-[max(1rem,env(safe-area-inset-left))] ${
-          sceneVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
-        }`}
-      >
-        <ModeOverlayStack isNight={isNight} />
       </div>
 
       <a
@@ -76,7 +91,7 @@ export default function AppShell({
       </a>
 
       <aside
-        className={`pointer-events-none absolute inset-e-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] z-10 w-max max-w-[min(100vw-2rem,20rem)] transition-[opacity,transform] duration-700 ease-out sm:inset-e-[max(1.75rem,env(safe-area-inset-right))] sm:top-[max(1rem,env(safe-area-inset-top))] ${
+        className={`pointer-events-none absolute inset-e-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.35rem,env(safe-area-inset-top))] z-10 w-max max-w-[min(100vw-2rem,20rem)] transition-[opacity,transform] duration-700 ease-out sm:inset-e-[max(1.75rem,env(safe-area-inset-right))] sm:top-[max(0.5rem,env(safe-area-inset-top))] ${
           controlsVisible
             ? "translate-y-0 opacity-100"
             : "-translate-y-1.5 opacity-0"

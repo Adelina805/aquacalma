@@ -36,7 +36,8 @@ export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
   const lineHeight = lineSize * 1.42;
   const n = AQUARIUM_POEM_TAGLINES.length;
   const blockHalfHeight = (titleSize * 1.1 + n * lineHeight) * 0.5;
-  const cy = h * 0.24;
+  /** Vertical anchor for title + taglines (fraction of height); larger = lower on screen. */
+  const cy = h * 0.16;
   const yTitle = cy - blockHalfHeight + titleSize * 0.45;
   const titleLineHeight = titleSize * 1.1;
   const paddingTop = yTitle - titleLineHeight / 2;

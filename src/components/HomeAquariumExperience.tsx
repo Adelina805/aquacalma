@@ -7,6 +7,7 @@ import AquariumTankLayer, {
 } from "@/src/components/shell/AquariumTankLayer";
 import AppShell from "@/src/components/shell/AppShell";
 import { AppModeProvider } from "@/src/state/app-mode-context";
+import { FocusTimerProvider } from "@/src/state/focus-timer-context";
 import {
   DEFAULT_FISH_COUNT,
   getAquariumPoetryLayout,
@@ -88,36 +89,38 @@ export default function HomeAquariumExperience() {
 
   return (
     <AppModeProvider>
-      <AppShell
-        isNight={isNight}
-        sceneVisible={sceneVisible}
-        controlsVisible={controlsVisible}
-        tankLayer={
-          <AquariumTankLayer
-            isNight={isNight}
-            sceneVisible={sceneVisible}
-            poetryLayout={poetryLayout}
-            tankMeasureRef={tankMeasureRef}
-            runtimeSettingsRef={runtimeSettingsRef}
-            feedModeRef={feedModeRef}
-          />
-        }
-        aquariumControls={
-          <FloatingControlPanel
-            isNight={isNight}
-            onToggleDayNight={() => setIsNight((v) => !v)}
-            isFeedMode={isFeedMode}
-            onToggleFeedMode={() => setIsFeedMode((v) => !v)}
-            fishCount={fishCount}
-            defaultFishCount={DEFAULT_FISH_COUNT}
-            maxFishCount={MAX_FISH_COUNT}
-            onAddFish={() =>
-              setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
-            }
-            onResetFish={() => setFishCount(DEFAULT_FISH_COUNT)}
-          />
-        }
-      />
+      <FocusTimerProvider>
+        <AppShell
+          isNight={isNight}
+          sceneVisible={sceneVisible}
+          controlsVisible={controlsVisible}
+          tankLayer={
+            <AquariumTankLayer
+              isNight={isNight}
+              sceneVisible={sceneVisible}
+              poetryLayout={poetryLayout}
+              tankMeasureRef={tankMeasureRef}
+              runtimeSettingsRef={runtimeSettingsRef}
+              feedModeRef={feedModeRef}
+            />
+          }
+          aquariumControls={
+            <FloatingControlPanel
+              isNight={isNight}
+              onToggleDayNight={() => setIsNight((v) => !v)}
+              isFeedMode={isFeedMode}
+              onToggleFeedMode={() => setIsFeedMode((v) => !v)}
+              fishCount={fishCount}
+              defaultFishCount={DEFAULT_FISH_COUNT}
+              maxFishCount={MAX_FISH_COUNT}
+              onAddFish={() =>
+                setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
+              }
+              onResetFish={() => setFishCount(DEFAULT_FISH_COUNT)}
+            />
+          }
+        />
+      </FocusTimerProvider>
     </AppModeProvider>
   );
 }
