@@ -1,0 +1,100 @@
+"use client";
+
+import { Dancing_Script } from "next/font/google";
+import dynamic from "next/dynamic";
+import type { MutableRefObject } from "react";
+import {
+  AQUARIUM_POEM_TAGLINES,
+  getAquariumPoetryLayout,
+  type AquariumRuntimeSettings,
+} from "@/src/lib/aquarium-runtime";
+
+const AquariumCanvas = dynamic(
+  () => import("@/src/components/AquariumCanvas"),
+  { ssr: false, loading: () => null },
+);
+
+const poemFont = Dancing_Script({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+});
+
+export type PoetryLayout = ReturnType<typeof getAquariumPoetryLayout>;
+
+export type AquariumTankLayerProps = {
+  isNight: boolean;
+  sceneVisible: boolean;
+  poetryLayout: PoetryLayout | null;
+  tankMeasureRef: MutableRefObject<HTMLDivElement | null>;
+  runtimeSettingsRef: MutableRefObject<AquariumRuntimeSettings>;
+  feedModeRef: MutableRefObject<boolean>;
+};
+
+/** Full-viewport tank: LCP mirror, measure root, and canvas simulation. */
+export default function AquariumTankLayer({
+  isNight,
+  sceneVisible,
+  poetryLayout,
+  tankMeasureRef,
+  runtimeSettingsRef,
+  feedModeRef,
+}: AquariumTankLayerProps) {
+  return (
+    <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
+      {poetryLayout ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-0 flex justify-center opacity-[0.01] select-none"
+          style={{ paddingTop: poetryLayout.paddingTop }}
+          aria-hidden
+        >
+          <div className={`w-full text-center ${poemFont.className}`}>
+            <p
+              className="m-0 font-semibold"
+              style={{
+                fontSize: poetryLayout.titleSize,
+                lineHeight: `${poetryLayout.titleLineHeight}px`,
+                color: isNight
+                  ? "rgba(255, 250, 245, 0.54)"
+                  : "rgba(18, 50, 70, 0.72)",
+              }}
+            >
+              Aquacalma
+            </p>
+            <div
+              className="m-0"
+              style={{ marginTop: poetryLayout.taglinesMarginTop }}
+            >
+              {AQUARIUM_POEM_TAGLINES.map((line) => (
+                <p
+                  key={line}
+                  className="m-0 font-normal"
+                  style={{
+                    fontSize: poetryLayout.lineSize,
+                    lineHeight: `${poetryLayout.lineHeight}px`,
+                    color: isNight
+                      ? "rgba(220, 240, 255, 0.44)"
+                      : "rgba(26, 68, 86, 0.58)",
+                  }}
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={`relative z-10 flex h-full min-h-0 flex-col transition-opacity duration-1400 ease-out ${
+          sceneVisible ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <AquariumCanvas
+          runtimeSettingsRef={runtimeSettingsRef}
+          feedModeRef={feedModeRef}
+          poemFontFamily={poemFont.style.fontFamily}
+        />
+      </div>
+    </div>
+  );
+}

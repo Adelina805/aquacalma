@@ -3,6 +3,7 @@
 import {
   memo,
   useEffect,
+  useLayoutEffect,
   useRef,
   type MutableRefObject,
 } from "react";
@@ -780,7 +781,7 @@ function stepFish(
     );
 
     if (seeking && targetPellet) {
-      let dx = wrapDeltaX(fish.x[i]!, targetPellet.x, w);
+      const dx = wrapDeltaX(fish.x[i]!, targetPellet.x, w);
       const dy = targetPellet.y - fish.y[i]!;
       const distSq = dx * dx + dy * dy;
       const dist = Math.sqrt(Math.max(1e-6, distSq));
@@ -2020,15 +2021,19 @@ function AquariumCanvasComponent({
     ambience,
     fishCount: clampFishCount(fishCount),
   });
-  if (!runtimeSettingsRefProp) {
-    fallbackRuntimeRef.current.ambience = ambience;
-    fallbackRuntimeRef.current.fishCount = clampFishCount(fishCount);
-  }
   const runtimeSettingsRef =
     runtimeSettingsRefProp ?? fallbackRuntimeRef;
 
+  useLayoutEffect(() => {
+    if (runtimeSettingsRefProp) return;
+    fallbackRuntimeRef.current.ambience = ambience;
+    fallbackRuntimeRef.current.fishCount = clampFishCount(fishCount);
+  }, [runtimeSettingsRefProp, ambience, fishCount]);
+
   const poemFontFamilyRef = useRef(poemFontFamily);
-  poemFontFamilyRef.current = poemFontFamily;
+  useLayoutEffect(() => {
+    poemFontFamilyRef.current = poemFontFamily;
+  }, [poemFontFamily]);
 
   const poemFontReadyRef = useRef(!poemFontFamily);
   useEffect(() => {
@@ -2423,7 +2428,7 @@ function AquariumCanvasComponent({
       canvas.removeEventListener("pointercancel", onPointerCancel);
       simulationRef.current = null;
     };
-  }, [pointerCanvasRef, runtimeSettingsRef]);
+  }, [pointerCanvasRef, runtimeSettingsRef, feedModeRef]);
 
   return (
     <div ref={containerRef} className="h-full w-full min-h-0">

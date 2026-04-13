@@ -1,37 +1,25 @@
 "use client";
 
-import { Dancing_Script } from "next/font/google";
-import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import FloatingControlPanel from "@/src/components/FloatingControlPanel";
+import AquariumTankLayer, {
+  type PoetryLayout,
+} from "@/src/components/shell/AquariumTankLayer";
+import AppShell from "@/src/components/shell/AppShell";
+import { AppModeProvider } from "@/src/state/app-mode-context";
 import {
-  AQUARIUM_POEM_TAGLINES,
   DEFAULT_FISH_COUNT,
   getAquariumPoetryLayout,
   MAX_FISH_COUNT,
   type AquariumRuntimeSettings,
 } from "@/src/lib/aquarium-runtime";
 
-const AquariumCanvas = dynamic(
-  () => import("@/src/components/AquariumCanvas"),
-  { ssr: false, loading: () => null },
-);
-
-const poemFont = Dancing_Script({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-});
-
-type PoetryLayout = ReturnType<typeof getAquariumPoetryLayout>;
-
 export default function HomeAquariumExperience() {
-  // Keep initial SSR/CSR markup identical; hydrate preference after mount.
   const [isNight, setIsNight] = useState(true);
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
   const [isFeedMode, setIsFeedMode] = useState(false);
   const [sceneVisible, setSceneVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
-  // Must start null on server and client so the first paint matches (avoids hydration mismatch).
   const [poetryLayout, setPoetryLayout] = useState<PoetryLayout | null>(null);
 
   const tankMeasureRef = useRef<HTMLDivElement>(null);
@@ -40,14 +28,20 @@ export default function HomeAquariumExperience() {
     ambience: "night",
     fishCount: DEFAULT_FISH_COUNT,
   });
-  runtimeSettingsRef.current.ambience = isNight ? "night" : "day";
-  runtimeSettingsRef.current.fishCount = fishCount;
 
-  // Read by the canvas RAF loop without causing re-renders.
   const feedModeRef = useRef(false);
-  feedModeRef.current = isFeedMode;
+
+  useLayoutEffect(() => {
+    runtimeSettingsRef.current.ambience = isNight ? "night" : "day";
+    runtimeSettingsRef.current.fishCount = fishCount;
+  }, [isNight, fishCount]);
+
+  useLayoutEffect(() => {
+    feedModeRef.current = isFeedMode;
+  }, [isFeedMode]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- post-hydration theme from localStorage; avoids SSR/client mismatch */
     const stored =
       window.localStorage.getItem("aquacalma-ambience") ??
       window.localStorage.getItem("vf-ambience") ??
@@ -61,12 +55,12 @@ export default function HomeAquariumExperience() {
       return;
     }
     setIsNight(window.matchMedia("(prefers-color-scheme: dark)").matches);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
     const value = isNight ? "night" : "day";
     window.localStorage.setItem("aquacalma-ambience", value);
-    // Keep compatibility with common theme keys used by other UI parts.
     window.localStorage.setItem("theme", isNight ? "dark" : "light");
   }, [isNight]);
 
@@ -93,118 +87,37 @@ export default function HomeAquariumExperience() {
   }, []);
 
   return (
-    <div
-      className={
-        isNight
-          ? "relative h-dvh w-full overflow-hidden bg-slate-950"
-          : "relative h-dvh w-full overflow-hidden bg-linear-to-b from-sky-50/95 via-cyan-50/55 to-slate-100/90"
-      }
-    >
-      <h1 className="sr-only">
-        Aquacalma — a soothing, interactive aquarium with gentle motion and
-        responsive life, a space to rest, return, and breathe. Comfortable on
-        phones and desktops.
-      </h1>
-
-      <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
-        {/* Near-invisible DOM copy for LCP (canvas is the real visuals). */}
-        {poetryLayout ? (
-          <div
-            className="pointer-events-none absolute inset-0 z-0 flex justify-center opacity-[0.01] select-none"
-            style={{ paddingTop: poetryLayout.paddingTop }}
-            aria-hidden
-          >
-            <div
-              className={`w-full text-center ${poemFont.className}`}
-            >
-              <p
-                className="m-0 font-semibold"
-                style={{
-                  fontSize: poetryLayout.titleSize,
-                  lineHeight: `${poetryLayout.titleLineHeight}px`,
-                  color: isNight
-                    ? "rgba(255, 250, 245, 0.54)"
-                    : "rgba(18, 50, 70, 0.72)",
-                }}
-              >
-                Aquacalma
-              </p>
-              <div
-                className="m-0"
-                style={{ marginTop: poetryLayout.taglinesMarginTop }}
-              >
-                {AQUARIUM_POEM_TAGLINES.map((line) => (
-                  <p
-                    key={line}
-                    className="m-0 font-normal"
-                    style={{
-                      fontSize: poetryLayout.lineSize,
-                      lineHeight: `${poetryLayout.lineHeight}px`,
-                      color: isNight
-                        ? "rgba(220, 240, 255, 0.44)"
-                        : "rgba(26, 68, 86, 0.58)",
-                    }}
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div
-          className={`relative z-10 flex h-full min-h-0 flex-col transition-opacity duration-1400 ease-out ${
-            sceneVisible ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <AquariumCanvas
+    <AppModeProvider>
+      <AppShell
+        isNight={isNight}
+        sceneVisible={sceneVisible}
+        controlsVisible={controlsVisible}
+        tankLayer={
+          <AquariumTankLayer
+            isNight={isNight}
+            sceneVisible={sceneVisible}
+            poetryLayout={poetryLayout}
+            tankMeasureRef={tankMeasureRef}
             runtimeSettingsRef={runtimeSettingsRef}
             feedModeRef={feedModeRef}
-            poemFontFamily={poemFont.style.fontFamily}
           />
-        </div>
-      </div>
-
-      <a
-        href="https://github.com/Adelina805/virtual-fishtank"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`pointer-events-auto absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-20 text-base leading-none no-underline transition-[opacity,color] duration-700 ease-out sm:left-[max(1.75rem,env(safe-area-inset-left))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
-          sceneVisible ? "opacity-100" : "opacity-0"
-        } ${
-          isNight
-            ? "text-slate-400 hover:text-rose-500"
-            : "text-slate-400 hover:text-rose-500"
-        }`}
-        aria-label="Aquacalma on GitHub"
-      >
-        <span aria-hidden className="select-none">
-          &#9829;
-        </span>
-      </a>
-
-      <aside
-        className={`pointer-events-none absolute inset-e-[max(1.25rem,env(safe-area-inset-right))] bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 w-max max-w-[min(100vw-2rem,20rem)] transition-[opacity,transform] duration-700 ease-out sm:inset-e-[max(1.75rem,env(safe-area-inset-right))] sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] ${
-          controlsVisible
-            ? "translate-y-0 opacity-100"
-            : "translate-y-1.5 opacity-0"
-        }`}
-      >
-        <FloatingControlPanel
-          isNight={isNight}
-          onToggleDayNight={() => setIsNight((v) => !v)}
-          isFeedMode={isFeedMode}
-          onToggleFeedMode={() => setIsFeedMode((v) => !v)}
-          fishCount={fishCount}
-          defaultFishCount={DEFAULT_FISH_COUNT}
-          maxFishCount={MAX_FISH_COUNT}
-          onAddFish={() =>
-            setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
-          }
-          onResetFish={() => setFishCount(DEFAULT_FISH_COUNT)}
-        />
-      </aside>
-    </div>
+        }
+        aquariumControls={
+          <FloatingControlPanel
+            isNight={isNight}
+            onToggleDayNight={() => setIsNight((v) => !v)}
+            isFeedMode={isFeedMode}
+            onToggleFeedMode={() => setIsFeedMode((v) => !v)}
+            fishCount={fishCount}
+            defaultFishCount={DEFAULT_FISH_COUNT}
+            maxFishCount={MAX_FISH_COUNT}
+            onAddFish={() =>
+              setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
+            }
+            onResetFish={() => setFishCount(DEFAULT_FISH_COUNT)}
+          />
+        }
+      />
+    </AppModeProvider>
   );
 }
