@@ -27,10 +27,8 @@ export default function RelaxBreathRing({ isNight }: RelaxBreathRingProps) {
     <>
       {Array.from({ length: RELAX_BREATH_RING_PARTICLE_COUNT }, (_, i) => {
         const angle = i * BASE_STEP + relaxBreathRingParticleJitterDeg(i);
-        const size = relaxBreathRingParticleSizePx(i) * (isNight ? 1 : 1.25);
-        const radius = isNight
-          ? "min(26vw, 6.5rem)"
-          : "min(27vw, 6.75rem)";
+        const size = relaxBreathRingParticleSizePx(i);
+        const radius = "min(26.5vw, 6.625rem)";
         return (
           <span
             key={i}

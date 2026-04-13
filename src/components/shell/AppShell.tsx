@@ -50,7 +50,7 @@ export default function AppShell({
 
       {(mode === "relax" || mode === "focus") && (
         <div
-          className={`pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center px-2 transition-[opacity] duration-700 ease-out ${
+          className={`pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-start px-2 pt-[max(11.5rem,calc(env(safe-area-inset-top)+11rem))] transition-opacity duration-700 ease-out sm:pt-[max(12.5rem,calc(env(safe-area-inset-top)+11.75rem))] ${
             sceneVisible ? "opacity-100" : "opacity-0"
           }`}
         >

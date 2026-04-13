@@ -4,9 +4,9 @@ import { useRef, type MutableRefObject } from "react";
 import { useRelaxBreathing } from "@/src/hooks/use-relax-breathing";
 import RelaxBreathRing from "@/src/components/modes/RelaxBreathRing";
 import {
-  aquariumPoetryTitleColor,
   relaxBreathGuideCircleStyle,
   relaxBreathMistRadialGradient,
+  relaxBreathPhaseTextColor,
   type AquariumPoetryTheme,
 } from "@/src/lib/aquarium-poetry-colors";
 import type { RelaxBreathAmbientState } from "@/src/lib/relax-breathing-cycle";
@@ -44,11 +44,11 @@ export default function RelaxBreathingHud({
 
   const theme: AquariumPoetryTheme = isNight ? "night" : "day";
   const mist = relaxBreathMistRadialGradient(theme);
-  const phaseColor = aquariumPoetryTitleColor(theme);
-  const guideStyle = !isNight ? relaxBreathGuideCircleStyle("day") : undefined;
+  const phaseColor = relaxBreathPhaseTextColor(theme);
+  const guideStyle = relaxBreathGuideCircleStyle(theme);
 
   return (
-    <div className="pointer-events-none flex w-full flex-col items-center justify-center px-2">
+    <div className="pointer-events-none flex w-full flex-col items-center justify-start px-2">
       <div className="relative flex h-[min(52vw,13.5rem)] w-[min(52vw,13.5rem)] items-center justify-center sm:h-56 sm:w-56">
         <div
           ref={ringRef}
@@ -64,13 +64,11 @@ export default function RelaxBreathingHud({
             }`}
             style={{ background: mist }}
           />
-          {!isNight ? (
-            <div
-              className="pointer-events-none absolute left-1/2 top-1/2 h-[min(54vw,13.5rem)] w-[min(54vw,13.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-full"
-              style={guideStyle}
-              aria-hidden
-            />
-          ) : null}
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 h-[min(54vw,13.5rem)] w-[min(54vw,13.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={guideStyle}
+            aria-hidden
+          />
           <RelaxBreathRing isNight={isNight} />
         </div>
 
