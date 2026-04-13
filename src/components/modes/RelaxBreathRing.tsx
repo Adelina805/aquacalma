@@ -28,7 +28,7 @@ export default function RelaxBreathRing({ isNight }: RelaxBreathRingProps) {
       {Array.from({ length: RELAX_BREATH_RING_PARTICLE_COUNT }, (_, i) => {
         const angle = i * BASE_STEP + relaxBreathRingParticleJitterDeg(i);
         const size = relaxBreathRingParticleSizePx(i);
-        const radius = "min(26.5vw, 6.625rem)";
+        const baseRadius = "min(26.5vw, 6.625rem)";
         return (
           <span
             key={i}
@@ -38,7 +38,7 @@ export default function RelaxBreathRing({ isNight }: RelaxBreathRingProps) {
               height: size,
               backgroundColor: bubble.backgroundColor,
               boxShadow: bubble.boxShadow,
-              transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(calc(-1 * ${radius}))`,
+              transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(calc(-1 * ${baseRadius} * var(--relax-breath-ring-radius-mult, 1)))`,
             }}
             aria-hidden
           />

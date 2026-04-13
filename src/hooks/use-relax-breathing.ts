@@ -6,10 +6,9 @@ import {
   RELAX_BREATH_PHASE_LABEL,
   type RelaxBreathAmbientState,
   type RelaxBreathPhase,
-  type RelaxBreathTimingConfig,
+  type RelaxBreathCycleConfig,
   type RelaxBreathRingVisualTheme,
   relaxBreathRingGroupOpacityFrom01,
-  relaxBreathRingScaleFrom01,
   RELAX_BREATH_AMBIENT_IDLE,
 } from "@/src/lib/relax-breathing-cycle";
 
@@ -21,8 +20,8 @@ export type UseRelaxBreathingOptions = {
   phaseLayer1Ref: RefObject<HTMLSpanElement | null>;
   /** Written each frame for aquarium integration (fish + light); reset when inactive. */
   ambientRef: MutableRefObject<RelaxBreathAmbientState>;
-  /** Optional override; defaults to `DEFAULT_RELAX_BREATH_TIMING` in `computeRelaxBreathFrame`. */
-  timing?: RelaxBreathTimingConfig;
+  /** Optional override; defaults to `DEFAULT_RELAX_BREATH_CONFIG` in `computeRelaxBreathFrame`. */
+  config?: RelaxBreathCycleConfig;
   /** Drives ring group opacity curve (day needs stronger alpha on light backgrounds). */
   visualTheme: RelaxBreathRingVisualTheme;
 };
@@ -38,7 +37,7 @@ export function useRelaxBreathing(
     phaseLayer0Ref,
     phaseLayer1Ref,
     ambientRef,
-    timing,
+    config,
     visualTheme,
   }: UseRelaxBreathingOptions,
 ): void {
@@ -46,20 +45,37 @@ export function useRelaxBreathing(
   const rafRef = useRef(0);
   const lastPhaseRef = useRef<RelaxBreathPhase | null>(null);
   const activeLayerRef = useRef(0);
+  const visualThemeRef = useRef<RelaxBreathRingVisualTheme>(visualTheme);
+  const configRef = useRef<RelaxBreathCycleConfig | undefined>(config);
+
+  useEffect(() => {
+    visualThemeRef.current = visualTheme;
+  }, [visualTheme]);
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     const phaseSpan0 = phaseLayer0Ref.current;
     const phaseSpan1 = phaseLayer1Ref.current;
     const ringStopTarget = ringRef.current;
 
-    const applyRingVisual = (scale01: number, elapsed: number) => {
+    const applyRingVisual = (
+      frame: ReturnType<typeof computeRelaxBreathFrame>,
+      elapsed: number,
+    ) => {
       const el = ringRef.current;
       if (!el) return;
-      const driftDeg = Math.sin(elapsed / 9800) * 0.55;
-      const s = relaxBreathRingScaleFrom01(scale01);
-      el.style.transform = `scale(${s}) rotate(${driftDeg}deg)`;
+      const driftDeg = Math.sin(elapsed / 9800) * 0.55 * frame.drift01;
+      el.style.transform = `scale(${frame.ringScale}) rotate(${driftDeg}deg)`;
+      el.style.setProperty(
+        "--relax-breath-ring-radius-mult",
+        String(frame.ringRadiusMult),
+      );
+      const theme = visualThemeRef.current;
       el.style.opacity = String(
-        relaxBreathRingGroupOpacityFrom01(scale01, visualTheme),
+        relaxBreathRingGroupOpacityFrom01(frame.ringOpacity, theme),
       );
     };
 
@@ -108,12 +124,12 @@ export function useRelaxBreathing(
     }
 
     const applyIdleVisual = () => {
-      const f = computeRelaxBreathFrame(0, timing);
-      applyRingVisual(f.scale01, 0);
+      const f = computeRelaxBreathFrame(0, configRef.current);
+      applyRingVisual(f, 0);
       activeLayerRef.current = 0;
       lastPhaseRef.current = null;
-      setPhaseLayers(f.phase, 0);
-      lastPhaseRef.current = f.phase;
+      setPhaseLayers(f.labelPhase, 0);
+      lastPhaseRef.current = f.labelPhase;
     };
 
     const tick = (now: number) => {
@@ -121,7 +137,7 @@ export function useRelaxBreathing(
         cycleStartRef.current = now;
       }
       const elapsed = now - cycleStartRef.current;
-      const frame = computeRelaxBreathFrame(elapsed, timing);
+      const frame = computeRelaxBreathFrame(elapsed, configRef.current);
 
       ambientRef.current = {
         active: true,
@@ -130,8 +146,8 @@ export function useRelaxBreathing(
         lightOverlayAlpha: frame.lightOverlayAlpha,
       };
 
-      applyRingVisual(frame.scale01, elapsed);
-      syncPhaseUi(frame.phase);
+      applyRingVisual(frame, elapsed);
+      syncPhaseUi(frame.labelPhase);
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -148,6 +164,7 @@ export function useRelaxBreathing(
       if (ringStopTarget) {
         ringStopTarget.style.transform = "scale(1) rotate(0deg)";
         ringStopTarget.style.opacity = "0";
+        ringStopTarget.style.removeProperty("--relax-breath-ring-radius-mult");
       }
       if (phaseSpan0) phaseSpan0.style.opacity = "0";
       if (phaseSpan1) phaseSpan1.style.opacity = "0";
@@ -158,7 +175,5 @@ export function useRelaxBreathing(
     ringRef,
     phaseLayer0Ref,
     phaseLayer1Ref,
-    timing,
-    visualTheme,
   ]);
 }

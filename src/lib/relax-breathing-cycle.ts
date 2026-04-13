@@ -1,28 +1,96 @@
 /**
  * Pure timing + easing for the Relax-mode ambient breath cycle.
- * Inhale → hold → exhale repeats with no gaps; scale is continuous at phase joins.
+ * Inhale → hold → exhale → rest repeats with a soft bottom pause.
  */
 
-export const RELAX_BREATH_INHALE_MS = 4000;
-/** Hold between inhale and exhale (within 2–4s guidance). */
-export const RELAX_BREATH_HOLD_MS = 3000;
-export const RELAX_BREATH_EXHALE_MS = 6000;
+export const RELAX_BREATH_INHALE_MS = 4200;
+export const RELAX_BREATH_HOLD_MS = 2200;
+export const RELAX_BREATH_EXHALE_MS = 6200;
+export const RELAX_BREATH_REST_MS = 1600;
 
 export const RELAX_BREATH_CYCLE_MS =
-  RELAX_BREATH_INHALE_MS + RELAX_BREATH_HOLD_MS + RELAX_BREATH_EXHALE_MS;
+  RELAX_BREATH_INHALE_MS +
+  RELAX_BREATH_HOLD_MS +
+  RELAX_BREATH_EXHALE_MS +
+  RELAX_BREATH_REST_MS;
 
-export type RelaxBreathPhase = "inhale" | "hold" | "exhale";
+export type RelaxBreathPhase = "inhale" | "hold" | "exhale" | "rest";
 
-export type RelaxBreathTimingConfig = {
+export type RelaxBreathCycleDurations = {
   inhaleMs: number;
   holdMs: number;
   exhaleMs: number;
+  restMs: number;
 };
 
-export const DEFAULT_RELAX_BREATH_TIMING: RelaxBreathTimingConfig = {
-  inhaleMs: RELAX_BREATH_INHALE_MS,
-  holdMs: RELAX_BREATH_HOLD_MS,
-  exhaleMs: RELAX_BREATH_EXHALE_MS,
+export type RelaxBreathScaleConfig = {
+  /** Scale at inhale start (top of previous rest). */
+  inhaleStart: number;
+  /** Peak scale during hold. */
+  inhalePeak: number;
+  /** Bottom scale at exhale end + rest. */
+  exhaleEnd: number;
+};
+
+export type RelaxBreathOpacityConfig = {
+  inhaleStart: number;
+  inhalePeak: number;
+  /** Opacity during rest (and end of exhale). */
+  rest: number;
+};
+
+export type RelaxBreathRadiusConfig = {
+  /** Multiplies particle radius; subtle expansion/contraction for clarity. */
+  inhaleStart: number;
+  inhalePeak: number;
+  exhaleEnd: number;
+};
+
+export type RelaxBreathEasingConfig = {
+  /** Inhale: ease-out cubic (gentle bloom). */
+  inhale: (t01: number) => number;
+  /** Exhale: stronger inward easing for legibility. */
+  exhale: (t01: number) => number;
+};
+
+export type RelaxBreathCycleConfig = {
+  durations: RelaxBreathCycleDurations;
+  scale: RelaxBreathScaleConfig;
+  opacity: RelaxBreathOpacityConfig;
+  radius: RelaxBreathRadiusConfig;
+  easing: RelaxBreathEasingConfig;
+  /** Label lead time so text reads slightly ahead of motion. */
+  labelLeadMs: number;
+};
+
+export const DEFAULT_RELAX_BREATH_CONFIG: RelaxBreathCycleConfig = {
+  durations: {
+    inhaleMs: RELAX_BREATH_INHALE_MS,
+    holdMs: RELAX_BREATH_HOLD_MS,
+    exhaleMs: RELAX_BREATH_EXHALE_MS,
+    restMs: RELAX_BREATH_REST_MS,
+  },
+  scale: {
+    inhaleStart: 0.82,
+    inhalePeak: 1.14,
+    exhaleEnd: 0.78,
+  },
+  // Keep subtle: day/night theme still modulates through `visualTheme` in the hook.
+  opacity: {
+    inhaleStart: 0.0,
+    inhalePeak: 1.0,
+    rest: 0.0,
+  },
+  radius: {
+    inhaleStart: 0.99,
+    inhalePeak: 1.03,
+    exhaleEnd: 0.93,
+  },
+  easing: {
+    inhale: relaxBreathEaseOutCubic,
+    exhale: relaxBreathEaseInOutInward,
+  },
+  labelLeadMs: 180,
 };
 
 export type RelaxBreathAmbientState = {
@@ -44,13 +112,24 @@ export const RELAX_BREATH_AMBIENT_IDLE: RelaxBreathAmbientState = {
 };
 
 export type RelaxBreathFrame = {
+  /** Phase used for motion (ring scale/opacity/radius). */
   phase: RelaxBreathPhase;
-  /** Eased breath fullness 0…1 (drives radial ring scale / opacity). */
+  /** Phase used for label timing (slightly leads motion). */
+  labelPhase: RelaxBreathPhase;
+  /** Ring wrapper scale (CSS transform). */
+  ringScale: number;
+  /** Ring wrapper opacity (0…1). */
+  ringOpacity: number;
+  /** Multiplier for particle radius (inward draw clarity). */
+  ringRadiusMult: number;
+  /** Normalized breath fullness 0…1 for ambient integration. */
   scale01: number;
   fishDtScale: number;
   lightOverlayAlpha: number;
   /** Linear 0…1 position in the full cycle (for debugging / future use). */
   cyclePosition01: number;
+  /** 0…1 drift weight (hold/rest should feel still). */
+  drift01: number;
 };
 
 /** Center label copy — single word per phase, no numerals. */
@@ -58,6 +137,7 @@ export const RELAX_BREATH_PHASE_LABEL: Record<RelaxBreathPhase, string> = {
   inhale: "inhale",
   hold: "hold",
   exhale: "exhale",
+  rest: "rest",
 };
 
 function clamp01(t: number): number {
@@ -93,62 +173,111 @@ export function relaxBreathEaseInCubic(t: number): number {
 }
 
 /**
+ * Inward-biased easing (stronger perceived draw on exhale).
+ * Similar feel to cubic-bezier(0.32, 0, 0.67, 0).
+ */
+export function relaxBreathEaseInOutInward(t: number): number {
+  const x = clamp01(t);
+  // Fast departure, long tail into the end for legible contraction.
+  return 1 - (1 - x) ** 4;
+}
+
+function lerp(a: number, b: number, t01: number): number {
+  return a + (b - a) * clamp01(t01);
+}
+
+function toFullness01(scale: number, lo: number, hi: number): number {
+  if (hi <= lo) return 0;
+  return clamp01((scale - lo) / (hi - lo));
+}
+
+/**
  * Given elapsed time since cycle start (any non-negative ms), returns the current frame.
  */
 export function computeRelaxBreathFrame(
   elapsedMs: number,
-  timing: RelaxBreathTimingConfig = DEFAULT_RELAX_BREATH_TIMING,
+  config: RelaxBreathCycleConfig = DEFAULT_RELAX_BREATH_CONFIG,
 ): RelaxBreathFrame {
+  const { durations, scale, opacity, radius, easing, labelLeadMs } = config;
   const cycleMs =
-    timing.inhaleMs + timing.holdMs + timing.exhaleMs;
+    durations.inhaleMs + durations.holdMs + durations.exhaleMs + durations.restMs;
   const t = elapsedMs % cycleMs;
   const cyclePosition01 = t / cycleMs;
 
   let phase: RelaxBreathPhase;
-  let scale01: number;
+  let ringScale: number;
+  let ringOpacity: number;
+  let ringRadiusMult: number;
+  let drift01: number;
   let phaseLocal01: number;
 
-  if (t < timing.inhaleMs) {
+  if (t < durations.inhaleMs) {
     phase = "inhale";
-    phaseLocal01 = t / timing.inhaleMs;
-    scale01 = relaxBreathEaseOutCubic(phaseLocal01);
-  } else if (t < timing.inhaleMs + timing.holdMs) {
+    phaseLocal01 = t / durations.inhaleMs;
+    const e = easing.inhale(phaseLocal01);
+    ringScale = lerp(scale.inhaleStart, scale.inhalePeak, e);
+    ringOpacity = lerp(opacity.inhaleStart, opacity.inhalePeak, relaxBreathSmoothstep(phaseLocal01));
+    ringRadiusMult = lerp(radius.inhaleStart, radius.inhalePeak, relaxBreathSmootherstep(phaseLocal01));
+    drift01 = 1;
+  } else if (t < durations.inhaleMs + durations.holdMs) {
     phase = "hold";
-    phaseLocal01 = (t - timing.inhaleMs) / timing.holdMs;
-    scale01 = 1;
-  } else {
+    phaseLocal01 = (t - durations.inhaleMs) / durations.holdMs;
+    ringScale = scale.inhalePeak;
+    ringOpacity = opacity.inhalePeak;
+    ringRadiusMult = radius.inhalePeak;
+    drift01 = 0;
+  } else if (t < durations.inhaleMs + durations.holdMs + durations.exhaleMs) {
     phase = "exhale";
-    const ex = t - timing.inhaleMs - timing.holdMs;
-    phaseLocal01 = ex / timing.exhaleMs;
-    scale01 = 1 - relaxBreathEaseInCubic(phaseLocal01);
+    const ex = t - durations.inhaleMs - durations.holdMs;
+    phaseLocal01 = ex / durations.exhaleMs;
+    const e = easing.exhale(phaseLocal01);
+    ringScale = lerp(scale.inhalePeak, scale.exhaleEnd, e);
+    ringOpacity = lerp(opacity.inhalePeak, opacity.rest, relaxBreathSmoothstep(phaseLocal01));
+    ringRadiusMult = lerp(radius.inhalePeak, radius.exhaleEnd, relaxBreathSmootherstep(phaseLocal01));
+    drift01 = 1;
+  } else {
+    phase = "rest";
+    phaseLocal01 =
+      (t - durations.inhaleMs - durations.holdMs - durations.exhaleMs) /
+      durations.restMs;
+    ringScale = scale.exhaleEnd;
+    ringOpacity = opacity.rest;
+    ringRadiusMult = radius.exhaleEnd;
+    drift01 = 0;
   }
 
   let fishDtScale = 1;
   if (phase === "inhale") {
-    fishDtScale = 0.9 + 0.1 * relaxBreathSmoothstep(phaseLocal01);
-  } else if (phase === "hold") {
-    fishDtScale = 1;
-  } else {
-    fishDtScale = 1 - 0.1 * relaxBreathSmoothstep(phaseLocal01);
+    fishDtScale = 0.92 + 0.08 * relaxBreathSmoothstep(phaseLocal01);
+  } else if (phase === "exhale") {
+    fishDtScale = 1 - 0.09 * relaxBreathSmoothstep(phaseLocal01);
   }
+
+  const scale01 = toFullness01(ringScale, scale.exhaleEnd, scale.inhalePeak);
 
   // Peak softly with breath fullness; keep very subtle (canvas multiplies again by mode).
   const lightOverlayAlpha = scale01 * 0.022;
 
+  const labelT = (elapsedMs + labelLeadMs) % cycleMs;
+  let labelPhase: RelaxBreathPhase;
+  if (labelT < durations.inhaleMs) labelPhase = "inhale";
+  else if (labelT < durations.inhaleMs + durations.holdMs) labelPhase = "hold";
+  else if (labelT < durations.inhaleMs + durations.holdMs + durations.exhaleMs)
+    labelPhase = "exhale";
+  else labelPhase = "rest";
+
   return {
     phase,
+    labelPhase,
+    ringScale,
+    ringOpacity,
+    ringRadiusMult,
     scale01,
     fishDtScale,
     lightOverlayAlpha,
     cyclePosition01,
+    drift01,
   };
-}
-
-/** Radial ring group scale (CSS transform) — wider than the old disc for a clear breath. */
-export function relaxBreathRingScaleFrom01(scale01: number): number {
-  const lo = 0.78;
-  const hi = 1.12;
-  return lo + scale01 * (hi - lo);
 }
 
 export type RelaxBreathRingVisualTheme = "day" | "night";
