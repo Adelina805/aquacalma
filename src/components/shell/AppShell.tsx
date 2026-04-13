@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import ModeToggle from "@/src/components/mode/ModeToggle";
 import FocusModeHud from "@/src/components/modes/FocusModeHud";
 import RelaxBreathingHud from "@/src/components/modes/RelaxBreathingHud";
+import { MODE_TAGLINES } from "@/src/lib/mode-taglines";
 import { useAppMode } from "@/src/state/app-mode-context";
 
 export type AppShellProps = {
@@ -28,6 +29,7 @@ export default function AppShell({
   aquariumControls,
 }: AppShellProps) {
   const { mode } = useAppMode();
+  const tagline = MODE_TAGLINES[mode];
 
   const rootBg = isNight
     ? "relative h-dvh w-full overflow-hidden bg-slate-950"
@@ -36,9 +38,8 @@ export default function AppShell({
   return (
     <div className={rootBg}>
       <h1 className="sr-only">
-        Aquacalma — a soothing, interactive aquarium with gentle motion and
-        responsive life, a space to rest, return, and breathe. Comfortable on
-        phones and desktops.
+        Aquacalma — {tagline}. Interactive digital aquarium, comfortable on phones
+        and desktops.
       </h1>
 
       {tankLayer}

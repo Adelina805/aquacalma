@@ -15,12 +15,8 @@ export type AquariumRuntimeSettings = {
   fishCount: number;
 };
 
-/** Same strings as canvas poetry (DOM LCP mirror + draw). */
-export const AQUARIUM_POEM_TAGLINES = [
-  "A soothing, interactive aquarium",
-  "with gentle motion and responsive life,",
-  "a space to rest, return, and breathe.",
-] as const;
+/** One mode-specific caption under the title (see `MODE_TAGLINES` in `mode-taglines.ts`). */
+const POETRY_TAGLINE_LINE_COUNT = 1;
 
 /** Sizing and vertical placement shared by `drawAquariumPoetry` and the DOM LCP mirror. */
 export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
@@ -34,7 +30,7 @@ export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
     ? Math.max(18, Math.min(30, w * 0.05))
     : Math.max(15, Math.min(26, w * 0.042));
   const lineHeight = lineSize * 1.42;
-  const n = AQUARIUM_POEM_TAGLINES.length;
+  const n = POETRY_TAGLINE_LINE_COUNT;
   const blockHalfHeight = (titleSize * 1.1 + n * lineHeight) * 0.5;
   /** Vertical anchor for title + taglines (fraction of height); larger = lower on screen. */
   const cy = h * 0.16;

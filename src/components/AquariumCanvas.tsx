@@ -7,8 +7,9 @@ import {
   useRef,
   type MutableRefObject,
 } from "react";
+import type { AppMode } from "@/src/lib/app-mode";
+import { MODE_TAGLINES } from "@/src/lib/mode-taglines";
 import {
-  AQUARIUM_POEM_TAGLINES,
   DEFAULT_FISH_COUNT,
   getAquariumPoetryLayout,
   MAX_FISH_COUNT,
@@ -1390,6 +1391,7 @@ type PoetryRasterCache = {
   dpr: number;
   ambience: AquariumAmbience;
   fontKey: string;
+  tagline: string;
 };
 
 function poetryRasterNeedsRebuild(
@@ -1399,6 +1401,7 @@ function poetryRasterNeedsRebuild(
   dpr: number,
   ambience: AquariumAmbience,
   fontKey: string,
+  tagline: string,
 ) {
   if (!c) return true;
   return (
@@ -1406,7 +1409,8 @@ function poetryRasterNeedsRebuild(
     c.cssH !== cssH ||
     c.dpr !== dpr ||
     c.ambience !== ambience ||
-    c.fontKey !== fontKey
+    c.fontKey !== fontKey ||
+    c.tagline !== tagline
   );
 }
 
@@ -1419,17 +1423,20 @@ function drawAquariumPoetryCached(
   ambience: AquariumAmbience,
   fontFamily: string,
   detailsAlpha: number,
+  tagline: string,
 ) {
   const fontKey = fontFamily;
   const canRasterize = detailsAlpha >= 0.999;
   if (!canRasterize) {
     poetryHolder.poetryRaster = null;
-    drawAquariumPoetry(ctx, cssW, cssH, ambience, fontKey, detailsAlpha);
+    drawAquariumPoetry(ctx, cssW, cssH, ambience, fontKey, detailsAlpha, tagline);
     return;
   }
 
   let cache = poetryHolder.poetryRaster;
-  if (poetryRasterNeedsRebuild(cache, cssW, cssH, dpr, ambience, fontKey)) {
+  if (
+    poetryRasterNeedsRebuild(cache, cssW, cssH, dpr, ambience, fontKey, tagline)
+  ) {
     const canvasEl = cache?.canvas ?? document.createElement("canvas");
     const bw = Math.max(1, Math.round(cssW * dpr));
     const bh = Math.max(1, Math.round(cssH * dpr));
@@ -1437,13 +1444,21 @@ function drawAquariumPoetryCached(
     canvasEl.height = bh;
     const pctx = canvasEl.getContext("2d");
     if (!pctx) {
-      drawAquariumPoetry(ctx, cssW, cssH, ambience, fontKey, detailsAlpha);
+      drawAquariumPoetry(
+        ctx,
+        cssW,
+        cssH,
+        ambience,
+        fontKey,
+        detailsAlpha,
+        tagline,
+      );
       return;
     }
     pctx.setTransform(1, 0, 0, 1, 0, 0);
     pctx.clearRect(0, 0, bw, bh);
     pctx.scale(dpr, dpr);
-    drawAquariumPoetry(pctx, cssW, cssH, ambience, fontKey, 1);
+    drawAquariumPoetry(pctx, cssW, cssH, ambience, fontKey, 1, tagline);
     cache = {
       canvas: canvasEl,
       cssW,
@@ -1451,6 +1466,7 @@ function drawAquariumPoetryCached(
       dpr,
       ambience,
       fontKey,
+      tagline,
     };
     poetryHolder.poetryRaster = cache;
   }
@@ -1878,13 +1894,11 @@ function drawAquariumPoetry(
   ambience: AquariumAmbience,
   fontFamily: string,
   detailsAlpha: number,
+  tagline: string,
 ) {
   const cx = w * 0.5;
   const title = "Aquacalma";
-  const { titleSize, lineSize, lineHeight, yTitle } = getAquariumPoetryLayout(
-    w,
-    h,
-  );
+  const { titleSize, lineSize, yTitle } = getAquariumPoetryLayout(w, h);
 
   ctx.save();
   ctx.textAlign = "center";
@@ -1895,8 +1909,8 @@ function drawAquariumPoetry(
     ? "rgba(255, 250, 245, 0.54)"
     : "rgba(18, 50, 70, 0.72)";
   const lineFill = night
-    ? "rgba(220, 240, 255, 0.44)"
-    : "rgba(26, 68, 86, 0.58)";
+    ? "rgba(200, 228, 248, 0.38)"
+    : "rgba(26, 68, 86, 0.48)";
   const glow = night
     ? "rgba(160, 220, 255, 0.32)"
     : "rgba(255, 255, 255, 0.5)";
@@ -1916,11 +1930,15 @@ function drawAquariumPoetry(
   ctx.globalAlpha *= detailsAlpha;
   ctx.shadowBlur = 0;
   ctx.font = `400 ${lineSize}px ${fontFamily}`;
+  const maxTagW = w * 0.88;
+  const naturalW = ctx.measureText(tagline).width;
+  const tagDrawSize =
+    naturalW <= maxTagW
+      ? lineSize
+      : Math.max(12, (lineSize * maxTagW) / Math.max(1, naturalW));
+  ctx.font = `400 ${tagDrawSize}px ${fontFamily}`;
   ctx.fillStyle = lineFill;
-  for (const line of AQUARIUM_POEM_TAGLINES) {
-    ctx.fillText(line, cx, y);
-    y += lineHeight;
-  }
+  ctx.fillText(tagline, cx, y);
 
   ctx.restore();
 }
@@ -1941,6 +1959,8 @@ type AquariumCanvasProps = {
   fishCount?: number;
   /** CSS `font-family` value (e.g. from `next/font`) for centered poetry drawn under the fish. */
   poemFontFamily?: string;
+  /** Latest app mode — read each frame so the caption updates without canvas remount. */
+  appModeRef: MutableRefObject<AppMode>;
 };
 
 /** All per-tank simulation data — lives outside React state; owned by the RAF loop + one ref. */
@@ -2007,7 +2027,8 @@ function AquariumCanvasComponent({
   ambience = "night",
   fishCount = DEFAULT_FISH_COUNT,
   poemFontFamily,
-}: AquariumCanvasProps = {}) {
+  appModeRef,
+}: AquariumCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerCanvasRefInternal = useRef<PointerCanvasState>({
@@ -2351,6 +2372,8 @@ function AquariumCanvasComponent({
       drawDriftParticles(ctx, buf, ambienceNow);
       ctx.restore();
       const fam = poemFontFamilyRef.current;
+      const modeNow = appModeRef.current;
+      const taglineNow = MODE_TAGLINES[modeNow];
       if ((fam && poemFontReadyRef.current) || !fam) {
         drawAquariumPoetryCached(
           ctx,
@@ -2361,6 +2384,7 @@ function AquariumCanvasComponent({
           ambienceNow,
           fam ?? "ui-serif, Georgia, serif",
           poetryT,
+          taglineNow,
         );
       }
       drawFood(ctx, ambienceNow);
@@ -2428,7 +2452,7 @@ function AquariumCanvasComponent({
       canvas.removeEventListener("pointercancel", onPointerCancel);
       simulationRef.current = null;
     };
-  }, [pointerCanvasRef, runtimeSettingsRef, feedModeRef]);
+  }, [pointerCanvasRef, runtimeSettingsRef, feedModeRef, appModeRef]);
 
   return (
     <div ref={containerRef} className="h-full w-full min-h-0">

@@ -2,12 +2,13 @@
 
 import { Dancing_Script } from "next/font/google";
 import dynamic from "next/dynamic";
-import type { MutableRefObject } from "react";
+import { useLayoutEffect, useRef, type MutableRefObject } from "react";
+import { MODE_TAGLINES } from "@/src/lib/mode-taglines";
 import {
-  AQUARIUM_POEM_TAGLINES,
   getAquariumPoetryLayout,
   type AquariumRuntimeSettings,
 } from "@/src/lib/aquarium-runtime";
+import { useAppMode } from "@/src/state/app-mode-context";
 
 const AquariumCanvas = dynamic(
   () => import("@/src/components/AquariumCanvas"),
@@ -39,6 +40,14 @@ export default function AquariumTankLayer({
   runtimeSettingsRef,
   feedModeRef,
 }: AquariumTankLayerProps) {
+  const { mode } = useAppMode();
+  const appModeRef = useRef(mode);
+  useLayoutEffect(() => {
+    appModeRef.current = mode;
+  }, [mode]);
+
+  const tagline = MODE_TAGLINES[mode];
+
   return (
     <div ref={tankMeasureRef} className="absolute inset-0 z-0 min-h-0">
       {poetryLayout ? (
@@ -60,26 +69,19 @@ export default function AquariumTankLayer({
             >
               Aquacalma
             </p>
-            <div
-              className="m-0"
-              style={{ marginTop: poetryLayout.taglinesMarginTop }}
+            <p
+              className="m-0 max-w-[min(92vw,36rem)] font-normal"
+              style={{
+                marginTop: poetryLayout.taglinesMarginTop,
+                fontSize: poetryLayout.lineSize,
+                lineHeight: `${poetryLayout.lineHeight}px`,
+                color: isNight
+                  ? "rgba(200, 228, 248, 0.38)"
+                  : "rgba(26, 68, 86, 0.48)",
+              }}
             >
-              {AQUARIUM_POEM_TAGLINES.map((line) => (
-                <p
-                  key={line}
-                  className="m-0 font-normal"
-                  style={{
-                    fontSize: poetryLayout.lineSize,
-                    lineHeight: `${poetryLayout.lineHeight}px`,
-                    color: isNight
-                      ? "rgba(220, 240, 255, 0.44)"
-                      : "rgba(26, 68, 86, 0.58)",
-                  }}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
+              {tagline}
+            </p>
           </div>
         </div>
       ) : null}
@@ -93,6 +95,7 @@ export default function AquariumTankLayer({
           runtimeSettingsRef={runtimeSettingsRef}
           feedModeRef={feedModeRef}
           poemFontFamily={poemFont.style.fontFamily}
+          appModeRef={appModeRef}
         />
       </div>
     </div>
