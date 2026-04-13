@@ -29,16 +29,6 @@ export function aquariumPoetryTaglineColor(theme: AquariumPoetryTheme): string {
   return rgba(TAGLINE[theme]);
 }
 
-/** Slightly higher-contrast color for the center phase word in Relax breathing. */
-export function relaxBreathPhaseTextColor(theme: AquariumPoetryTheme): string {
-  const { r, g, b, a } = TITLE[theme];
-  if (theme === "night") {
-    return rgba({ r, g, b, a: Math.min(0.78, a + 0.14) });
-  }
-  // Day mode needs more contrast against the brighter mist center.
-  return rgba({ r: Math.max(0, r - 2), g: Math.max(0, g - 4), b: Math.max(0, b - 6), a: Math.min(0.97, a + 0.18) });
-}
-
 /** Bubble fill + glow — same hue as title, tuned for small dots. */
 export function relaxBreathRingParticleAppearance(
   theme: AquariumPoetryTheme,
@@ -66,9 +56,9 @@ export function relaxBreathMistRadialGradient(
 ): string {
   const { r, g, b } = TITLE[theme];
   if (theme === "night") {
-    return `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.24) 0%, rgba(${r},${g},${b},0.13) 50%, rgba(${r},${g},${b},0.06) 68%, transparent 82%)`;
+    return `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.07) 0%, rgba(${r},${g},${b},0.045) 26%, rgba(${r},${g},${b},0.025) 46%, rgba(${r},${g},${b},0.01) 60%, transparent 74%)`;
   }
-  return `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.26) 0%, rgba(${r},${g},${b},0.15) 48%, rgba(${r},${g},${b},0.06) 68%, transparent 82%)`;
+  return `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.08) 0%, rgba(${r},${g},${b},0.052) 26%, rgba(${r},${g},${b},0.03) 46%, rgba(${r},${g},${b},0.012) 60%, transparent 74%)`;
 }
 
 /**

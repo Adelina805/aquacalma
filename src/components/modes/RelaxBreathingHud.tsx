@@ -4,9 +4,9 @@ import { useRef, type MutableRefObject } from "react";
 import { useRelaxBreathing } from "@/src/hooks/use-relax-breathing";
 import RelaxBreathRing from "@/src/components/modes/RelaxBreathRing";
 import {
+  aquariumPoetryTitleColor,
   relaxBreathGuideCircleStyle,
   relaxBreathMistRadialGradient,
-  relaxBreathPhaseTextColor,
   type AquariumPoetryTheme,
 } from "@/src/lib/aquarium-poetry-colors";
 import type { RelaxBreathAmbientState } from "@/src/lib/relax-breathing-cycle";
@@ -44,7 +44,7 @@ export default function RelaxBreathingHud({
 
   const theme: AquariumPoetryTheme = isNight ? "night" : "day";
   const mist = relaxBreathMistRadialGradient(theme);
-  const phaseColor = relaxBreathPhaseTextColor(theme);
+  const phaseColor = aquariumPoetryTitleColor(theme);
   const guideStyle = relaxBreathGuideCircleStyle(theme);
 
   return (
@@ -59,8 +59,8 @@ export default function RelaxBreathingHud({
           aria-hidden
         >
           <div
-            className={`pointer-events-none absolute inset-[18%] rounded-full ${
-              isNight ? "opacity-95" : "opacity-100"
+            className={`pointer-events-none absolute inset-[8%] rounded-full blur-[14px] ${
+              isNight ? "opacity-70" : "opacity-60"
             }`}
             style={{ background: mist }}
           />
