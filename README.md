@@ -24,3 +24,7 @@ This project is an attempt to translate that feeling into a digital form. Aquaca
 - React
 - TypeScript
 - Tailwind CSS
+
+## Credits
+
+- Ambient audio track (royalty-free): [Aquarium Fish by Magiksolo](https://pixabay.com/music/beats-aquarium-fish-132518/)

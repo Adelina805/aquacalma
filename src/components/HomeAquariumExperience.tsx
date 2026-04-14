@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import PlayModeControls from "@/src/components/PlayModeControls";
 import ThemeToggle from "@/src/components/ThemeToggle";
+import AmbientAudioToggle from "@/src/components/AmbientAudioToggle";
 import AquariumTankLayer, {
   type PoetryLayout,
 } from "@/src/components/shell/AquariumTankLayer";
@@ -22,6 +23,7 @@ import {
   type RelaxBreathAmbientState,
 } from "@/src/lib/relax-breathing-cycle";
 import { useEnvironmentGrowth } from "@/src/hooks/use-environment-growth";
+import { useAmbientAudio } from "@/src/hooks/use-ambient-audio";
 
 const FishCountToggle = dynamic(
   () => import("@/src/components/FishCountToggle"),
@@ -36,6 +38,12 @@ function HomeAquariumExperienceContent() {
   const [sceneVisible, setSceneVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [poetryLayout, setPoetryLayout] = useState<PoetryLayout | null>(null);
+  const { isEnabled: isAmbientAudioEnabled, toggleEnabled: toggleAmbientAudio } =
+    useAmbientAudio({
+      src: "/audio/ambient.mp3",
+      volume: 0.2,
+      fadeInMs: 400,
+    });
 
   const tankMeasureRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +146,11 @@ function HomeAquariumExperienceContent() {
           <ThemeToggle
             isNight={isNight}
             onToggleDayNight={() => setIsNight((v) => !v)}
+          />
+          <AmbientAudioToggle
+            isNight={isNight}
+            isEnabled={isAmbientAudioEnabled}
+            onToggle={toggleAmbientAudio}
           />
           <FishCountToggle isNight={isNight} fishCount={effectiveTankFishCount} />
         </div>
