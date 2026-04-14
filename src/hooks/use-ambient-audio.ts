@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const AUDIO_STORAGE_KEY = "aquacalma-ambient-audio-enabled";
-const DEFAULT_VOLUME = 0.2;
+const DEFAULT_VOLUME = 0.16;
 const FADE_IN_MS = 400;
 const INTERACTION_EVENTS: Array<keyof WindowEventMap> = [
   "pointerdown",

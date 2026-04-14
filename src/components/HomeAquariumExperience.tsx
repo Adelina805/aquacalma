@@ -41,7 +41,7 @@ function HomeAquariumExperienceContent() {
   const { isEnabled: isAmbientAudioEnabled, toggleEnabled: toggleAmbientAudio } =
     useAmbientAudio({
       src: "/audio/ambient.mp3",
-      volume: 0.2,
+      volume: 0.16,
       fadeInMs: 400,
     });
 
