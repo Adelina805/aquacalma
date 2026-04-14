@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const FOCUS_PRESET_MINUTES = [50, 30, 25, 15, 10, 5] as const;
+export const FOCUS_PRESET_MINUTES = [25, 15, 10, 5] as const;
 
 export type FocusPresetMinutes = (typeof FOCUS_PRESET_MINUTES)[number];
 
@@ -13,7 +13,6 @@ export type UseFocusTimerResult = {
   setPresetMinutes: (m: FocusPresetMinutes) => void;
   status: FocusTimerStatus;
   remainingMs: number;
-  presetsLocked: boolean;
   start: () => void;
   pause: () => void;
   resume: () => void;
@@ -35,8 +34,6 @@ export function useFocusTimer(): UseFocusTimerResult {
   );
 
   const deadlinePerfRef = useRef<number | null>(null);
-
-  const presetsLocked = status === "running" || status === "paused";
 
   useEffect(() => {
     if (status !== "running" || deadlinePerfRef.current === null) return;
@@ -62,9 +59,22 @@ export function useFocusTimer(): UseFocusTimerResult {
 
   const setPresetMinutes = useCallback(
     (m: FocusPresetMinutes) => {
-      if (status === "running" || status === "paused") return;
+      const ms = m * 60_000;
       setPresetMinutesState(m);
-      setRemainingMs(m * 60_000);
+
+      if (status === "running") {
+        deadlinePerfRef.current = performance.now() + ms;
+        setRemainingMs(ms);
+        return;
+      }
+
+      if (status === "paused") {
+        deadlinePerfRef.current = null;
+        setRemainingMs(ms);
+        return;
+      }
+
+      setRemainingMs(ms);
       if (status === "complete") setStatus("idle");
     },
     [status],
@@ -102,7 +112,6 @@ export function useFocusTimer(): UseFocusTimerResult {
     setPresetMinutes,
     status,
     remainingMs,
-    presetsLocked,
     start,
     pause,
     resume,
