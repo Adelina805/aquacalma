@@ -42,7 +42,7 @@ export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
   const poetryStackBottom =
     paddingTop + titleLineHeight + taglinesMarginTop + lineHeight;
   /** Padding from tank top to start relax/focus HUD so it stacks below the poetry block. */
-  const modeHudTopPx = poetryStackBottom + 16;
+  const modeHudTopPx = poetryStackBottom + 32;
   return {
     titleSize,
     lineSize,
