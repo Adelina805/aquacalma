@@ -11,6 +11,7 @@ import {
 import { MODE_TAGLINES } from "@/src/lib/mode-taglines";
 import {
   getAquariumPoetryLayout,
+  type AquariumPoetryLayout,
   type AquariumRuntimeSettings,
 } from "@/src/lib/aquarium-runtime";
 import { useAppMode } from "@/src/state/app-mode-context";
@@ -25,7 +26,7 @@ const poemFont = Dancing_Script({
   weight: ["400", "600"],
 });
 
-export type PoetryLayout = ReturnType<typeof getAquariumPoetryLayout>;
+export type PoetryLayout = AquariumPoetryLayout;
 
 export type AquariumTankLayerProps = {
   isNight: boolean;

@@ -49,7 +49,7 @@ export default function RelaxBreathingHud({
 
   return (
     <div className="pointer-events-none flex w-full flex-col items-center justify-start px-2">
-      <div className="relative mt-6 flex h-[min(52vw,13.5rem)] w-[min(52vw,13.5rem)] items-center justify-center sm:mt-8 sm:h-56 sm:w-56">
+      <div className="relative flex h-[min(52vw,13.5rem)] w-[min(52vw,13.5rem)] items-center justify-center sm:h-56 sm:w-56">
         <div
           ref={ringRef}
           className={`absolute inset-0 origin-center will-change-transform ${

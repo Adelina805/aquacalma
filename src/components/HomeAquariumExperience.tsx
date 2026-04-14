@@ -103,6 +103,7 @@ export default function HomeAquariumExperience() {
           sceneVisible={sceneVisible}
           controlsVisible={controlsVisible}
           relaxBreathAmbientRef={relaxBreathAmbientRef}
+          poetryLayout={poetryLayout}
           tankLayer={
             <AquariumTankLayer
               isNight={isNight}

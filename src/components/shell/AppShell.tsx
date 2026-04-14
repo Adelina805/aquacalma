@@ -1,6 +1,7 @@
 "use client";
 
 import type { MutableRefObject, ReactNode } from "react";
+import type { PoetryLayout } from "@/src/components/shell/AquariumTankLayer";
 import type { RelaxBreathAmbientState } from "@/src/lib/relax-breathing-cycle";
 import ModeToggle from "@/src/components/mode/ModeToggle";
 import FocusModeHud from "@/src/components/modes/FocusModeHud";
@@ -20,6 +21,8 @@ export type AppShellProps = {
   playControls: ReactNode;
   /** Shared Relax breath state for canvas sync (fish / light). */
   relaxBreathAmbientRef: MutableRefObject<RelaxBreathAmbientState>;
+  /** Measured poetry block — positions relax/focus HUD in a column below title + tagline. */
+  poetryLayout: PoetryLayout | null;
 };
 
 /**
@@ -34,6 +37,7 @@ export default function AppShell({
   globalControls,
   playControls,
   relaxBreathAmbientRef,
+  poetryLayout,
 }: AppShellProps) {
   const { mode } = useAppMode();
   const tagline = MODE_TAGLINES[mode];
@@ -53,12 +57,19 @@ export default function AppShell({
 
       {(mode === "relax" || mode === "focus") && (
         <div
-          className={`pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-start px-2 pt-[max(11.5rem,calc(env(safe-area-inset-top)+11rem))] transition-opacity duration-700 ease-out sm:pt-[max(12.5rem,calc(env(safe-area-inset-top)+11.75rem))] ${
-            sceneVisible ? "opacity-100" : "opacity-0"
-          }`}
+          className={`pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-start px-2 transition-opacity duration-700 ease-out ${
+            poetryLayout ? "pt-0" : "pt-[max(11.5rem,calc(env(safe-area-inset-top)+11rem))] sm:pt-[max(12.5rem,calc(env(safe-area-inset-top)+11.75rem))]"
+          } ${sceneVisible ? "opacity-100" : "opacity-0"}`}
+          style={
+            poetryLayout
+              ? {
+                  paddingTop: `max(calc(env(safe-area-inset-top) + 0.5rem), ${poetryLayout.modeHudTopPx}px)`,
+                }
+              : undefined
+          }
         >
           <div
-            className={`flex w-full max-w-[min(100vw-1.5rem,28rem)] flex-col items-center gap-4 transition-transform duration-700 ease-out sm:max-w-none sm:gap-5 ${
+            className={`flex w-full max-w-[min(100vw-1.5rem,28rem)] shrink-0 flex-col items-center gap-4 transition-transform duration-700 ease-out sm:max-w-none sm:gap-5 ${
               mode === "focus" ? "pointer-events-auto" : "pointer-events-none"
             } ${sceneVisible ? "translate-y-0" : "translate-y-2"}`}
           >

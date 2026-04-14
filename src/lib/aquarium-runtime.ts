@@ -38,6 +38,11 @@ export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
   const titleLineHeight = titleSize * 1.1;
   const paddingTop = yTitle - titleLineHeight / 2;
   const taglinesMarginTop = titleSize * 0.5 - lineHeight / 2;
+  /** Bottom edge of the title + tagline stack (matches DOM LCP mirror + canvas poetry). */
+  const poetryStackBottom =
+    paddingTop + titleLineHeight + taglinesMarginTop + lineHeight;
+  /** Padding from tank top to start relax/focus HUD so it stacks below the poetry block. */
+  const modeHudTopPx = poetryStackBottom + 16;
   return {
     titleSize,
     lineSize,
@@ -46,5 +51,9 @@ export function getAquariumPoetryLayout(cssWidth: number, cssHeight: number) {
     titleLineHeight,
     paddingTop,
     taglinesMarginTop,
+    poetryStackBottom,
+    modeHudTopPx,
   };
 }
+
+export type AquariumPoetryLayout = ReturnType<typeof getAquariumPoetryLayout>;
