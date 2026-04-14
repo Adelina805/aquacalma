@@ -102,7 +102,6 @@ export default function PlayModeControls({
 }: PlayModeControlsProps) {
   const shownCount = displayFishCount ?? fishCount;
   const atMax = shownCount >= maxFishCount;
-  const noExtras = fishCount <= defaultFishCount;
   const canInteract = actionsEnabled;
 
   const shell = isNight
@@ -132,11 +131,11 @@ export default function PlayModeControls({
       ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.11] text-white transition-[background-color,color,transform] duration-200 ease-out hover:bg-white/[0.16] active:scale-[0.97] active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
       : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950/10 text-neutral-950 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-950/14 active:scale-[0.97] active:bg-slate-950/18 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
 
-  const resetIconBtn = !canInteract || noExtras
-    ? isNight
+  const resetIconBtn = canInteract
+    ? toolbarIconBtn
+    : isNight
       ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
-    : toolbarIconBtn;
+      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500";
 
   return (
     <div
@@ -190,14 +189,10 @@ export default function PlayModeControls({
           <button
             type="button"
             className={resetIconBtn}
-            disabled={!canInteract || noExtras}
+            disabled={!canInteract}
             onClick={onResetFish}
-            aria-label={
-              noExtras
-                ? `Already at default (${defaultFishCount} fish)`
-                : `Reset to ${defaultFishCount} fish`
-            }
-            title={noExtras ? undefined : `Reset to ${defaultFishCount} fish`}
+            aria-label={`Reset to ${defaultFishCount} fish`}
+            title={`Reset to ${defaultFishCount} fish`}
           >
             <RotateCcwIcon className="h-4 w-4" />
           </button>

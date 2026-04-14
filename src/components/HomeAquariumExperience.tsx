@@ -9,7 +9,10 @@ import AquariumTankLayer, {
 } from "@/src/components/shell/AquariumTankLayer";
 import AppShell from "@/src/components/shell/AppShell";
 import { AppModeProvider } from "@/src/state/app-mode-context";
-import { FocusTimerProvider } from "@/src/state/focus-timer-context";
+import {
+  FocusTimerProvider,
+  useFocusTimerActions,
+} from "@/src/state/focus-timer-context";
 import {
   DEFAULT_ENVIRONMENT_GROWTH_STATE,
   DEFAULT_FISH_COUNT,
@@ -29,6 +32,7 @@ const FishCountToggle = dynamic(
 );
 
 function HomeAquariumExperienceContent() {
+  const { clearGrowth } = useFocusTimerActions();
   const [isNight, setIsNight] = useState(true);
   const [fishCount, setFishCount] = useState(DEFAULT_FISH_COUNT);
   const [isFeedMode, setIsFeedMode] = useState(false);
@@ -150,7 +154,10 @@ function HomeAquariumExperienceContent() {
           onAddFish={() =>
             setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
           }
-          onResetFish={() => setFishCount(DEFAULT_FISH_COUNT)}
+          onResetFish={() => {
+            clearGrowth();
+            setFishCount(DEFAULT_FISH_COUNT);
+          }}
         />
       }
     />

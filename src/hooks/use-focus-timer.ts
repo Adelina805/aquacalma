@@ -19,6 +19,7 @@ export type UseFocusTimerResult = {
   pause: () => void;
   resume: () => void;
   reset: () => void;
+  clearGrowth: () => void;
 };
 
 const DEFAULT_PRESET: FocusPresetMinutes = 25;
@@ -67,7 +68,13 @@ export function useFocusTimer(): UseFocusTimerResult {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const deadlinePerfRef = useRef<number | null>(null);
+  const elapsedMsRef = useRef(0);
   const runSessionVirtualDurationMsRef = useRef(DEFAULT_PRESET * 60_000);
+  const runSessionElapsedBaseMsRef = useRef(0);
+
+  useEffect(() => {
+    elapsedMsRef.current = elapsedMs;
+  }, [elapsedMs]);
 
   useEffect(() => {
     if (status !== "running" || deadlinePerfRef.current === null) return;
@@ -84,11 +91,12 @@ export function useFocusTimer(): UseFocusTimerResult {
         0,
         runSessionVirtualDurationMsRef.current - virtualLeft,
       );
-      setElapsedMs((prev) => Math.max(prev, virtualElapsed));
+      setElapsedMs(runSessionElapsedBaseMsRef.current + virtualElapsed);
       if (left <= 0) {
         deadlinePerfRef.current = null;
-        setElapsedMs((prev) =>
-          Math.max(prev, runSessionVirtualDurationMsRef.current),
+        setElapsedMs(
+          runSessionElapsedBaseMsRef.current +
+            runSessionVirtualDurationMsRef.current,
         );
         setStatus("complete");
         return;
@@ -107,6 +115,7 @@ export function useFocusTimer(): UseFocusTimerResult {
       setPresetMinutesState(m);
 
       if (status === "running") {
+        runSessionElapsedBaseMsRef.current = elapsedMsRef.current;
         runSessionVirtualDurationMsRef.current = virtualMs;
         deadlinePerfRef.current = performance.now() + ms;
         setRemainingMs(ms);
@@ -130,6 +139,7 @@ export function useFocusTimer(): UseFocusTimerResult {
   const start = useCallback(() => {
     if (status !== "idle" && status !== "complete") return;
     const ms = sessionDurationMs(presetMinutes);
+    runSessionElapsedBaseMsRef.current = elapsedMsRef.current;
     runSessionVirtualDurationMsRef.current = presetMinutes * 60_000;
     deadlinePerfRef.current = performance.now() + ms;
     setRemainingMs(ms);
@@ -155,6 +165,12 @@ export function useFocusTimer(): UseFocusTimerResult {
     setRemainingMs(sessionDurationMs(presetMinutes));
   }, [presetMinutes]);
 
+  const clearGrowth = useCallback(() => {
+    elapsedMsRef.current = 0;
+    runSessionElapsedBaseMsRef.current = 0;
+    setElapsedMs(0);
+  }, []);
+
   return {
     presetMinutes,
     setPresetMinutes,
@@ -165,6 +181,7 @@ export function useFocusTimer(): UseFocusTimerResult {
     pause,
     resume,
     reset,
+    clearGrowth,
   };
 }
 

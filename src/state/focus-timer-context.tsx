@@ -23,6 +23,7 @@ export type FocusTimerActions = {
   pause: () => void;
   resume: () => void;
   reset: () => void;
+  clearGrowth: () => void;
 };
 
 const RemainingContext = createContext<number | null>(null);
@@ -48,6 +49,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       pause: timer.pause,
       resume: timer.resume,
       reset: timer.reset,
+      clearGrowth: timer.clearGrowth,
     }),
     [
       timer.setPresetMinutes,
@@ -55,6 +57,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       timer.pause,
       timer.resume,
       timer.reset,
+      timer.clearGrowth,
     ],
   );
   const elapsedMs = timer.elapsedMs;

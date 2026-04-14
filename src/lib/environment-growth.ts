@@ -15,12 +15,15 @@ export const FOCUS_GROWTH_THRESHOLDS_MS = {
 } as const;
 
 const FOCUS_GROWTH_BLEND_MS = {
-  fishStage1: 90_000,
-  fishStage2: 120_000,
-  fishStage3: 150_000,
   plants: 180_000,
   rare: 240_000,
 } as const;
+/**
+ * Fish growth keeps building after stage 3: roughly +1 fish / focused minute
+ * after the 5-minute threshold, capped so default 10 can reach 100.
+ */
+const FOCUS_GROWTH_FISH_MS_PER_FISH = 60_000;
+const FOCUS_GROWTH_MAX_FISH_BONUS = 90;
 
 export const ENVIRONMENT_GROWTH_IDLE: EnvironmentGrowthState = {
   elapsedMs: 0,
@@ -59,22 +62,14 @@ export function computeEnvironmentGrowthState(
   const safeElapsedMs = Math.max(0, elapsedMs);
   const stage = computeEnvironmentGrowthStage(safeElapsedMs);
 
-  const stage1Fish = 2 * ramp01(
-    safeElapsedMs,
-    FOCUS_GROWTH_THRESHOLDS_MS.stage1,
-    FOCUS_GROWTH_BLEND_MS.fishStage1,
+  const fishGrowthElapsedMs = Math.max(
+    0,
+    safeElapsedMs - FOCUS_GROWTH_THRESHOLDS_MS.stage1,
   );
-  const stage2Fish = 2 * ramp01(
-    safeElapsedMs,
-    FOCUS_GROWTH_THRESHOLDS_MS.stage2,
-    FOCUS_GROWTH_BLEND_MS.fishStage2,
+  const fishBonusCount = Math.min(
+    FOCUS_GROWTH_MAX_FISH_BONUS,
+    Math.floor(fishGrowthElapsedMs / FOCUS_GROWTH_FISH_MS_PER_FISH),
   );
-  const stage3Fish = 2 * ramp01(
-    safeElapsedMs,
-    FOCUS_GROWTH_THRESHOLDS_MS.stage3,
-    FOCUS_GROWTH_BLEND_MS.fishStage3,
-  );
-  const fishBonusCount = Math.round(stage1Fish + stage2Fish + stage3Fish);
 
   const plantRichness01 = ramp01(
     safeElapsedMs,
