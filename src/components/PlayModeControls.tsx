@@ -110,32 +110,32 @@ export default function PlayModeControls({
 
   const subtle = isNight ? "text-white/50" : "text-slate-700";
   const toolbarIconBtn = isNight
-    ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/[0.88] transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/[0.09] active:scale-[0.97] active:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
-    : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-950 transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/90 active:scale-[0.97] active:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
+    ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/[0.88] transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/[0.09] active:scale-[0.97] active:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
+    : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-950 transition-[color,background-color,transform] duration-200 ease-out hover:bg-white/90 active:scale-[0.97] active:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
 
   const feedBtn = !canInteract
     ? isNight
-      ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
+      ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
+      : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
     : isFeedMode
       ? isNight
-        ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.12] text-white transition-[background-color,color,transform] duration-200 ease-out hover:bg-white/[0.16] active:scale-[0.97] active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
-        : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950/12 text-slate-950 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-950/16 active:scale-[0.97] active:bg-slate-950/18 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60"
+        ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.12] text-white transition-[background-color,color,transform] duration-200 ease-out hover:bg-white/[0.16] active:scale-[0.97] active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
+        : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950/12 text-slate-950 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-950/16 active:scale-[0.97] active:bg-slate-950/18 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60"
       : toolbarIconBtn;
 
   const addBtn = !canInteract || atMax
     ? isNight
-      ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
+      ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
+      : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500"
     : isNight
-      ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.11] text-white transition-[background-color,color,transform] duration-200 ease-out hover:bg-white/[0.16] active:scale-[0.97] active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950/10 text-neutral-950 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-950/14 active:scale-[0.97] active:bg-slate-950/18 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
+      ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.11] text-white transition-[background-color,color,transform] duration-200 ease-out hover:bg-white/[0.16] active:scale-[0.97] active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300/80"
+      : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950/10 text-neutral-950 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-950/14 active:scale-[0.97] active:bg-slate-950/18 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/60";
 
   const resetIconBtn = canInteract
     ? toolbarIconBtn
     : isNight
-      ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
-      : "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500";
+      ? "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/28"
+      : "touch-manipulation select-none grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500";
 
   return (
     <div
