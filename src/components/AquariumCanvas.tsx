@@ -22,6 +22,11 @@ import {
   type AquariumAmbience,
   type AquariumRuntimeSettings,
 } from "@/src/lib/aquarium-runtime";
+import {
+  PLAY_CURSOR_INTERACTION,
+  type PlayInteractionMode,
+  smoothstep01 as smoothStepUnit,
+} from "@/src/lib/play-cursor-interaction";
 
 /** Latest pointer position in canvas CSS pixels (same space as drawing after DPR scale). */
 export type PointerCanvasState = {
@@ -375,11 +380,6 @@ function fishPelletDistSq(
 /** Matches `drawFish` / `drawFishSchool`: body ellipse tip along +local X → world snout. */
 const FISH_UNIT_SNOUT_X = 22 * (0.44 - 0.12);
 
-function smoothstep01(t: number): number {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
-}
-
 /** Vertical bob offset in CSS px — shared by `getFishMouthWorld` and `drawFishSchool`. */
 function getFishBobOffsetY(
   fish: FishSchool,
@@ -614,6 +614,8 @@ function stepFish(
   h: number,
   dt: number,
   pointer: PointerCanvasState,
+  playInteractionMode: PlayInteractionMode,
+  playModeActive: boolean,
   food: FoodPellet[],
   count: number,
   timeSec: number,
@@ -622,7 +624,14 @@ function stepFish(
   const margin = 40;
   const top = h * 0.14;
   const bottom = h * 0.86;
-  const influenceR = Math.min(320, Math.min(w, h) * 0.42);
+  const legacyInfluenceR = Math.min(320, Math.min(w, h) * 0.42);
+  const playInfluenceR = Math.min(
+    playInteractionMode === "attract"
+      ? PLAY_CURSOR_INTERACTION.attract.influenceRadius
+      : PLAY_CURSOR_INTERACTION.repel.influenceRadius,
+    Math.min(w, h) * (playInteractionMode === "attract" ? 0.95 : 0.84),
+  );
+  const influenceR = playModeActive ? playInfluenceR : legacyInfluenceR;
   const personal = 56;
   const maxSteer = 46;
   const follow = 0.78;
@@ -632,7 +641,9 @@ function stepFish(
   const boostDecayPerSec = 1.75;
   const randomTurnChance = 0.34;
   const turnCooldownSec = 0.34;
-  const directFleeRadius = 34;
+  const directFleeRadius = playModeActive
+    ? PLAY_CURSOR_INTERACTION.repel.impulseRadius
+    : 34;
   const detectRSq = FOOD_DETECTION_RADIUS * FOOD_DETECTION_RADIUS;
   const slowingR = Math.max(FOOD_EAT_RADIUS * 4, FOOD_SLOWING_RADIUS);
   const minFacingSpeed = 1.5;
@@ -747,52 +758,116 @@ function stepFish(
         const behindBoostRadius = Math.max(personal * 0.9, fish.size[i] * 30);
         const pointerAhead = fish.dir[i] * dx > 0;
         const directOnTop = dist < directFleeRadius;
-        if (directOnTop) {
-          fish.speedBoost[i] = Math.min(
-            maxSpeedBoost,
-            fish.speedBoost[i] + behindBoostPerSec * 1.25 * dt,
-          );
-        }
-        if (pointerAhead && dist < frontTurnRadius) {
-          if (fish.turnCooldown[i] <= 0) {
-            fish.dir[i] *= -1;
-            fish.turnCooldown[i] = turnCooldownSec;
-            fish.speedBoost[i] = Math.min(
-              maxSpeedBoost,
-              fish.speedBoost[i] + boostOnFrontTurn,
-            );
-          }
-        } else if (!pointerAhead && dist < behindBoostRadius) {
-          fish.speedBoost[i] = Math.min(
-            maxSpeedBoost,
-            fish.speedBoost[i] + behindBoostPerSec * dt,
-          );
-        }
 
         const nx = dx / dist;
         const ny = dy / dist;
-        const edge = 1 - dist / influenceR;
-        const falloff = Math.pow(edge, 1.2);
         const dFac = FISH_DEPTH_REACT[fish.depth[i]!] ?? 1;
-        let along: number;
-        if (directOnTop) {
-          along = -1.3;
-        } else if (dist < behindBoostRadius) {
-          if (pointerAhead) {
-            along = -0.7;
-          } else {
-            along = follow * 0.42;
+        if (!playModeActive) {
+          if (directOnTop) {
+            fish.speedBoost[i] = Math.min(
+              maxSpeedBoost,
+              fish.speedBoost[i] + behindBoostPerSec * 1.25 * dt,
+            );
           }
+          if (pointerAhead && dist < frontTurnRadius) {
+            if (fish.turnCooldown[i] <= 0) {
+              fish.dir[i] *= -1;
+              fish.turnCooldown[i] = turnCooldownSec;
+              fish.speedBoost[i] = Math.min(
+                maxSpeedBoost,
+                fish.speedBoost[i] + boostOnFrontTurn,
+              );
+            }
+          } else if (!pointerAhead && dist < behindBoostRadius) {
+            fish.speedBoost[i] = Math.min(
+              maxSpeedBoost,
+              fish.speedBoost[i] + behindBoostPerSec * dt,
+            );
+          }
+          const edge = 1 - dist / influenceR;
+          const falloff = Math.pow(edge, 1.2);
+          let along: number;
+          if (directOnTop) {
+            along = -1.3;
+          } else if (dist < behindBoostRadius) {
+            if (pointerAhead) {
+              along = -0.7;
+            } else {
+              along = follow * 0.42;
+            }
+          } else {
+            along = follow * (1 - (dist - personal) / influenceSpan);
+          }
+          const mag = Math.min(maxSteer, 52 * falloff * along * dFac);
+          pointerVx = nx * mag;
+          pointerVy = ny * mag;
+        } else if (playInteractionMode === "repel") {
+          if (directOnTop) {
+            fish.speedBoost[i] = Math.min(
+              maxSpeedBoost,
+              fish.speedBoost[i] + behindBoostPerSec * 1.25 * dt,
+            );
+          }
+          if (pointerAhead && dist < frontTurnRadius) {
+            if (fish.turnCooldown[i] <= 0) {
+              fish.dir[i] *= -1;
+              fish.turnCooldown[i] = turnCooldownSec;
+              fish.speedBoost[i] = Math.min(
+                maxSpeedBoost,
+                fish.speedBoost[i] + boostOnFrontTurn,
+              );
+            }
+          } else if (!pointerAhead && dist < behindBoostRadius) {
+            fish.speedBoost[i] = Math.min(
+              maxSpeedBoost,
+              fish.speedBoost[i] + behindBoostPerSec * dt,
+            );
+          }
+          const edge = Math.max(0, 1 - dist / influenceR);
+          const falloff = smoothStepUnit(edge);
+          const impulse = directOnTop
+            ? PLAY_CURSOR_INTERACTION.repel.impulseBoost
+            : 1;
+          const mag = Math.min(
+            maxSteer,
+            PLAY_CURSOR_INTERACTION.repel.maxForce * falloff * impulse * dFac,
+          );
+          pointerVx = -nx * mag;
+          pointerVy = -ny * mag;
         } else {
-          along = follow * (1 - (dist - personal) / influenceSpan);
+          const edge = Math.max(0, 1 - dist / influenceR);
+          const falloff = Math.pow(
+            smoothStepUnit(edge),
+            PLAY_CURSOR_INTERACTION.attract.falloffPower,
+          );
+          const comfortR = PLAY_CURSOR_INTERACTION.attract.comfortRadius;
+          const comfortRatio = Math.max(0, Math.min(1, dist / comfortR));
+          const inward = dist > comfortR ? 1 : -0.16 * (1 - comfortRatio);
+          const tangentialSign = (i & 1) === 0 ? 1 : -1;
+          const tx = -ny * tangentialSign;
+          const ty = nx * tangentialSign;
+          const orbitMix = smoothStepUnit(
+            Math.max(0, 1 - dist / (comfortR * 1.55)),
+          );
+          const nearBoost =
+            1 +
+            (PLAY_CURSOR_INTERACTION.attract.nearFieldBoost - 1) *
+              smoothStepUnit(Math.max(0, 1 - dist / (comfortR * 2.1)));
+          const mag = Math.min(
+            maxSteer * PLAY_CURSOR_INTERACTION.attract.maxSteerRatio,
+            PLAY_CURSOR_INTERACTION.attract.maxForce * falloff * dFac * nearBoost,
+          );
+          pointerVx =
+            nx * mag * inward +
+            tx * mag * PLAY_CURSOR_INTERACTION.attract.tangentialStrength * orbitMix;
+          pointerVy =
+            ny * mag * inward +
+            ty * mag * PLAY_CURSOR_INTERACTION.attract.tangentialStrength * orbitMix;
         }
-        const mag = Math.min(maxSteer, 52 * falloff * along * dFac);
-        pointerVx = nx * mag;
-        pointerVy = ny * mag;
       }
     }
 
-    const chaseEase = smoothstep01(fish.foodChaseT[i]!);
+    const chaseEase = smoothStepUnit(fish.foodChaseT[i]!);
     const followRateSeek = Math.min(
       1,
       followRateWander *
@@ -853,8 +928,16 @@ function stepFish(
       targetVy += dy * invDist * bias;
     }
 
-    const fr =
-      seeking ? followRateSeek : followRateWander * (1 - 0.55 * resumeBlend);
+    const fr = (() => {
+      if (seeking) return followRateSeek;
+      if (!playModeActive) return followRateWander * (1 - 0.55 * resumeBlend);
+      const pointerSmoothingPerSec =
+        playInteractionMode === "repel"
+          ? PLAY_CURSOR_INTERACTION.repel.smoothingPerSec
+          : PLAY_CURSOR_INTERACTION.attract.smoothingPerSec;
+      const pointerFollowRate = Math.min(1, pointerSmoothingPerSec * dt);
+      return Math.max(pointerFollowRate, followRateWander * (1 - 0.55 * resumeBlend));
+    })();
     fish.vxOff[i] += (targetVx - fish.vxOff[i]) * fr;
     fish.vyOff[i] += (targetVy - fish.vyOff[i]) * fr;
 
@@ -2176,6 +2259,7 @@ function AquariumCanvasComponent({
     fishCount: clampFishCount(fishCount),
     fishBonusBaseline: 0,
     environmentGrowth: DEFAULT_ENVIRONMENT_GROWTH_STATE,
+    playInteractionMode: "attract",
   });
   const runtimeSettingsRef =
     runtimeSettingsRefProp ?? fallbackRuntimeRef;
@@ -2186,6 +2270,7 @@ function AquariumCanvasComponent({
     fallbackRuntimeRef.current.fishCount = clampFishCount(fishCount);
     fallbackRuntimeRef.current.fishBonusBaseline = 0;
     fallbackRuntimeRef.current.environmentGrowth = DEFAULT_ENVIRONMENT_GROWTH_STATE;
+    fallbackRuntimeRef.current.playInteractionMode = "attract";
   }, [runtimeSettingsRefProp, ambience, fishCount]);
 
   const poemFontFamilyRef = useRef(poemFontFamily);
@@ -2423,6 +2508,8 @@ function AquariumCanvasComponent({
       const n = targetFishCount;
       const ambienceNow = rs.ambience;
       const modeNow = appModeRef.current;
+      const playModeActive = modeNow === "play";
+      const playInteractionMode = rs.playInteractionMode;
       const breathAmbient = relaxBreathAmbientRef.current;
       const relaxBreathLive = modeNow === "relax" && breathAmbient.active;
       const relaxSmooth = Math.min(1, 15 * dt);
@@ -2494,6 +2581,8 @@ function AquariumCanvasComponent({
         cssH,
         dt,
         pointerCanvasRef.current,
+        playInteractionMode,
+        playModeActive,
         foodSim.pellets,
         n,
         timeSec,

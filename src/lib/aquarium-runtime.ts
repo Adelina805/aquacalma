@@ -1,5 +1,6 @@
 import type { EnvironmentGrowthState } from "@/src/lib/environment-growth";
 import { ENVIRONMENT_GROWTH_IDLE } from "@/src/lib/environment-growth";
+import type { PlayInteractionMode } from "@/src/lib/play-cursor-interaction";
 
 export type AquariumAmbience = "day" | "night";
 
@@ -23,6 +24,8 @@ export type AquariumRuntimeSettings = {
   fishBonusBaseline: number;
   /** Focus-driven growth layer; rendering systems read this (not timer logic). */
   environmentGrowth: EnvironmentGrowthState;
+  /** Play-mode cursor mood. Ignored outside play mode. */
+  playInteractionMode: PlayInteractionMode;
 };
 
 export const DEFAULT_ENVIRONMENT_GROWTH_STATE = ENVIRONMENT_GROWTH_IDLE;
