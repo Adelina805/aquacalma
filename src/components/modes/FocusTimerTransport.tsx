@@ -1,6 +1,7 @@
 import type { FocusTimerStatus } from "@/src/hooks/use-focus-timer";
 import { modeHudTransportIconBtn } from "@/src/components/modes/mode-ui-tokens";
 import { PauseIcon, PlayIcon } from "@/src/components/modes/focus-timer-icons";
+import { useUiSound } from "@/src/hooks/use-ui-sound";
 import { useFocusTimerActions, useFocusTimerMode } from "@/src/state/focus-timer-context";
 
 export type FocusTimerTransportProps = {
@@ -11,6 +12,7 @@ const iconClass = "h-2 w-2";
 
 function FocusTimerTransportIdle({ isNight }: FocusTimerTransportProps) {
   const { start } = useFocusTimerActions();
+  const { playUiSound } = useUiSound();
 
   return (
     <div
@@ -21,7 +23,10 @@ function FocusTimerTransportIdle({ isNight }: FocusTimerTransportProps) {
       <button
         type="button"
         className={modeHudTransportIconBtn(isNight)}
-        onClick={start}
+        onClick={() => {
+          playUiSound();
+          start();
+        }}
         aria-label="Start"
       >
         <PlayIcon className={`${iconClass} ml-px`} />
@@ -35,6 +40,7 @@ function FocusTimerTransportActive({
   status,
 }: FocusTimerTransportProps & { status: Exclude<FocusTimerStatus, "idle"> }) {
   const { pause, resume, start } = useFocusTimerActions();
+  const { playUiSound } = useUiSound();
 
   return (
     <div
@@ -46,7 +52,10 @@ function FocusTimerTransportActive({
         <button
           type="button"
           className={modeHudTransportIconBtn(isNight)}
-          onClick={pause}
+          onClick={() => {
+            playUiSound();
+            pause();
+          }}
           aria-label="Pause"
         >
           <PauseIcon className={iconClass} />
@@ -56,7 +65,10 @@ function FocusTimerTransportActive({
         <button
           type="button"
           className={modeHudTransportIconBtn(isNight)}
-          onClick={resume}
+          onClick={() => {
+            playUiSound();
+            resume();
+          }}
           aria-label="Resume"
         >
           <PlayIcon className={`${iconClass} ml-px`} />
@@ -66,7 +78,10 @@ function FocusTimerTransportActive({
         <button
           type="button"
           className={modeHudTransportIconBtn(isNight)}
-          onClick={start}
+          onClick={() => {
+            playUiSound();
+            start();
+          }}
           aria-label="Start"
         >
           <PlayIcon className={`${iconClass} ml-px`} />

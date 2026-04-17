@@ -25,6 +25,7 @@ import {
 } from "@/src/lib/relax-breathing-cycle";
 import { useEnvironmentGrowth } from "@/src/hooks/use-environment-growth";
 import { useAmbientAudio } from "@/src/hooks/use-ambient-audio";
+import { useUiSound } from "@/src/hooks/use-ui-sound";
 
 const FishCountToggle = dynamic(
   () => import("@/src/components/FishCountToggle"),
@@ -45,6 +46,7 @@ function HomeAquariumExperienceContent() {
       volume: 0.16,
       fadeInMs: 400,
     });
+  const { playUiSound } = useUiSound();
 
   const tankMeasureRef = useRef<HTMLDivElement>(null);
 
@@ -152,12 +154,18 @@ function HomeAquariumExperienceContent() {
           <div className="flex flex-col items-end gap-1.5">
             <ThemeToggle
               isNight={isNight}
-              onToggleDayNight={() => setIsNight((v) => !v)}
+              onToggleDayNight={() => {
+                playUiSound();
+                setIsNight((v) => !v);
+              }}
             />
             <AmbientAudioToggle
               isNight={isNight}
               isEnabled={isAmbientAudioEnabled}
-              onToggle={toggleAmbientAudio}
+              onToggle={() => {
+                playUiSound();
+                toggleAmbientAudio();
+              }}
             />
             <FishCountToggle isNight={isNight} fishCount={effectiveTankFishCount} />
           </div>
@@ -166,15 +174,20 @@ function HomeAquariumExperienceContent() {
           <PlayModeControls
             isNight={isNight}
             isFeedMode={isFeedMode}
-            onToggleFeedMode={() => setIsFeedMode((v) => !v)}
+            onToggleFeedMode={() => {
+              playUiSound();
+              setIsFeedMode((v) => !v);
+            }}
             fishCount={fishCount}
             displayFishCount={effectiveTankFishCount}
             defaultFishCount={DEFAULT_FISH_COUNT}
             maxFishCount={MAX_FISH_COUNT}
-            onAddFish={() =>
-              setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1))
-            }
+            onAddFish={() => {
+              playUiSound();
+              setFishCount((c) => Math.min(MAX_FISH_COUNT, c + 1));
+            }}
             onResetFish={() => {
+              playUiSound();
               setGrowthBaselineBonus(environmentGrowth.fishBonusCount);
               setFishCount(DEFAULT_FISH_COUNT);
             }}

@@ -2,6 +2,7 @@
 
 import { useCallback, type KeyboardEvent } from "react";
 import { APP_MODES, type AppMode } from "@/src/lib/app-mode";
+import { useUiSound } from "@/src/hooks/use-ui-sound";
 import { useAppMode } from "@/src/state/app-mode-context";
 
 export type ModeToggleProps = {
@@ -17,6 +18,7 @@ const MODE_LABELS: Record<AppMode, string> = {
 
 export default function ModeToggle({ isNight, className = "" }: ModeToggleProps) {
   const { mode, setMode } = useAppMode();
+  const { playUiSound } = useUiSound();
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
@@ -25,9 +27,10 @@ export default function ModeToggle({ isNight, className = "" }: ModeToggleProps)
       const i = APP_MODES.indexOf(mode);
       const delta = e.key === "ArrowRight" ? 1 : -1;
       const next = APP_MODES[(i + delta + APP_MODES.length) % APP_MODES.length]!;
+      playUiSound();
       setMode(next);
     },
-    [mode, setMode],
+    [mode, playUiSound, setMode],
   );
 
   const shell = isNight
@@ -60,7 +63,11 @@ export default function ModeToggle({ isNight, className = "" }: ModeToggleProps)
                 role="radio"
                 aria-checked={selected}
                 className={selected ? activeBtn : idleBtn}
-                onClick={() => setMode(m)}
+                onClick={() => {
+                  if (m === mode) return;
+                  playUiSound();
+                  setMode(m);
+                }}
               >
                 {MODE_LABELS[m]}
               </button>
