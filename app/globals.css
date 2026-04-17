@@ -29,3 +29,33 @@ body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
 }
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-safe-ui {
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .touch-safe-ui :where(button, [role="button"], a, canvas, [data-interactive="true"]) {
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .touch-safe-ui :where(
+      input,
+      textarea,
+      select,
+      [contenteditable="true"],
+      [contenteditable="plaintext-only"]
+    ) {
+    user-select: text;
+    -webkit-user-select: text;
+    -ms-user-select: text;
+    touch-action: auto;
+  }
+}

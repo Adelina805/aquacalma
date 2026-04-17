@@ -83,7 +83,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="touch-safe-ui min-h-full flex flex-col font-sans">
+        {children}
+      </body>
     </html>
   );
 }
